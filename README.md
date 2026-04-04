@@ -12,7 +12,7 @@ AI-powered language learning app using Python, Gradio, and OpenAI API
 - OpenAI API
 
 ## Live Demo
-[Add your Hugging Face link here]
+https://huggingface.co/spaces/rhead1998/desilingo
 
 ## How It Works
 User input → processed through OpenAI API → feedback and translation displayed in the app
