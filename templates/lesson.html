@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}{{ unit.title }} · DesiUnmute{% endblock %}
+
+{% block content %}
+<a class="back-link" href="/lessons">← All lessons</a>
+
+<section class="page-intro">
+  <span class="unit-number">Unit {{ unit.id }}</span>
+  <h1>{{ unit.title }}</h1>
+  <p class="lead">{{ unit.summary }}</p>
+  <p class="draft-note">Draft lesson: still being checked by a native speaker.</p>
+</section>
+
+<!-- 1. Do you know this? -->
+<section class="card">
+  <h2>Do you know this?</h2>
+  <p class="hint">A quick check. If you know it all already, feel free to skip ahead.</p>
+
+  <form hx-post="/lessons/{{ unit.id }}/check" hx-target="#check-result">
+    {% for item in unit.check %}
+    {% set number = loop.index0 %}
+    <fieldset class="question">
+      <legend>{{ item.question }}</legend>
+      {% for option in item.options %}
+      <label class="pill"><input type="radio" name="q{{ number }}" value="{{ option }}"> {{ option }}</label>
+      {% endfor %}
+    </fieldset>
+    {% endfor %}
+    <button type="submit">Check my answers</button>
+  </form>
+
+  <div id="check-result" aria-live="polite"></div>
+</section>
+
+<!-- 2. The lesson -->
+{% for section in unit.sections %}
+<section class="card lesson-section">
+  <h2>{{ section.heading }}</h2>
+  {% for paragraph in section.text %}<p>{{ paragraph }}</p>{% endfor %}
+
+  <div class="phrase-list">
+    {% for example in section.examples %}
+    {% include "partials/phrase_card.html" %}
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+
+<!-- 3. Make it about my family -->
+<section class="card">
+  <h2>Make it about my family</h2>
+  <p class="hint">Tell us about your relatives and we'll write examples about them.</p>
+
+  <form hx-post="/lessons/{{ unit.id }}/family"
+        hx-target="#family-result"
+        hx-indicator="#family-loading"
+        hx-disabled-elt="find button">
+    <label for="family">Who's in your family?</label>
+    <textarea id="family" name="family" rows="2" maxlength="300"
+              placeholder="My Nani lives in Jaipur, my Mama ji is a doctor, and I have an older cousin, Priya." required></textarea>
+
+    <fieldset class="options">
+      <legend>I am</legend>
+      <label class="pill"><input type="radio" name="gender" value="Female" checked> Female</label>
+      <label class="pill"><input type="radio" name="gender" value="Male"> Male</label>
+    </fieldset>
+
+    <button type="submit">Write my examples</button>
+    <p id="family-loading" class="loading">Writing examples about your family…</p>
+  </form>
+
+  <div id="family-result" aria-live="polite"></div>
+</section>
+
+<!-- 4. Ask the tutor -->
+<section class="card">
+  <h2>Ask the tutor</h2>
+  <p class="hint">Anything about this lesson. "Do I use aap with my older cousin?"</p>
+
+  <form hx-post="/lessons/{{ unit.id }}/ask"
+        hx-target="#tutor-answer"
+        hx-indicator="#tutor-loading"
+        hx-disabled-elt="find button">
+    <label for="question">Your question</label>
+    <input id="question" name="question" type="text" maxlength="300" autocomplete="off" required>
+    <button type="submit">Ask</button>
+    <p id="tutor-loading" class="loading">Thinking…</p>
+  </form>
+
+  <div id="tutor-answer" aria-live="polite"></div>
+</section>
+
+<nav class="lesson-nav">
+  {% if unit.id == 1 %}<a href="/lessons/2">Next: Unit 2, The family map →</a>
+  {% else %}<a href="/lessons">← Back to all lessons</a>{% endif %}
+</nav>
+
+<script src="/static/desiunmute.js?v=4"></script>
+{% endblock %}

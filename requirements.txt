@@ -1,0 +1,10 @@
+# The website
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+itsdangerous
+
+# The AI
+openai >= 1.68.0
+jiwer

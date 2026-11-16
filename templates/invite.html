@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block nav %}{% endblock %}
+
+{% block content %}
+<section class="invite">
+  <h1>Understand it already?<br><span>Now speak it.</span></h1>
+  <p class="lead">DesiUnmute helps you finally speak the Hindi you grew up hearing. We're in a small private beta right now.</p>
+
+  <form method="post" action="/invite" class="card">
+    <label for="code">Invite code</label>
+    <input id="code" name="code" type="text" autocomplete="off" autocapitalize="off" required>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <button type="submit">Come in</button>
+  </form>
+</section>
+{% endblock %}

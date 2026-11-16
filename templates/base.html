@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}DesiUnmute{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <!-- ?v=4 makes browsers fetch the new file after an update. Raise the number when you change it. -->
+  <link rel="stylesheet" href="/static/style.css?v=4">
+  <!-- HTMX: lets buttons update part of the page without writing JavaScript.
+       Saved in static/ so the site doesn't depend on another website. -->
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">Desi<span>Unmute</span></a>
+    {% block nav %}
+    <nav>
+      <a href="/translate">Translate</a>
+      <a href="/pronunciation">Pronunciation</a>
+      <a href="/lessons">Heritage Gaps</a>
+      <a href="/conversation">Conversation</a>
+    </nav>
+    {% endblock %}
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p><strong>Beta.</strong> Hindi lessons are drafts and are still being reviewed by native speakers.</p>
+    <p>Your text and recordings are sent to OpenAI to create translations, audio and feedback. We don't store them.</p>
+  </footer>
+</body>
+</html>

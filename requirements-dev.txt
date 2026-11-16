@@ -1,0 +1,5 @@
+# Only needed on your computer (not on Render)
+-r requirements.txt
+pytest
+httpx
+gradio == 6.11.0

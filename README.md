@@ -1,0 +1,85 @@
+# DesiUnmute
+
+_Understand it already? Now speak it._
+
+AI-powered Hindi learning for Indian heritage learners, built with Python, FastAPI and the OpenAI API. Learn natural, everyday Hindi the way your family speaks it, all in romanized Hindi.
+
+## Features
+
+- Translates English into natural, conversational Hindi (romanized), with a word breakdown, alternatives, and common mistakes
+- Hindi audio for every translation
+- Pronunciation coach: record yourself and get friendly feedback in simple English
+- Conversation practice with AI characters (like a phone call with Nani), with spoken replies and an end-of-conversation summary
+- Respect levels: talking to a friend, an elder, or a child
+
+The website has Translate, the Pronunciation Coach, Heritage Gaps (Units 1 and 2, drafts) and Conversation Practice.
+
+## Tech Stack
+
+- Python
+- FastAPI (website), Jinja templates and HTMX (pages)
+- OpenAI API (text, text-to-speech, and speech-to-text)
+- jiwer (pronunciation scoring)
+- pytest
+- Gradio (the original beta app, kept for local testing)
+
+## How It Works
+
+User input → processed through the OpenAI API → translation, audio, and feedback displayed in the app
+
+## Files
+
+| File | What it does |
+|---|---|
+| `main.py` | The website: pages, the invite code, and what happens when you click a button. |
+| `templates/` | The HTML for each page. `base.html` is the shared header and footer. |
+| `templates/partials/` | Small pieces HTMX drops into a page (like a translation result). |
+| `static/` | The styles (`style.css`), HTMX, the tab icon, and `desiunmute.js` (recording, conversations and the Slow button). |
+| `config.py` | Shared settings: AI model names, limits, natural-Hindi rules, respect levels. |
+| `audio.py` | Text-to-speech (Hindi voice) and speech-to-text. |
+| `translate.py` | English → natural romanized Hindi, with breakdown and audio. |
+| `pronunciation.py` | Scores your recording and gives coaching feedback. |
+| `lessons.py` | Heritage Gaps lessons (the reviewed content), plus the AI for family examples and the tutor. |
+| `conversation.py` | Conversation characters, "How do I say...?", and the end summary. |
+| `try_models.py` | Compares AI models side by side on the same Hindi task. |
+| `app.py` | The original Gradio beta app (for local testing only). |
+| `tests/` | Automatic checks that use a fake AI (free, no API key needed). |
+
+## Run the website on your computer
+
+```
+pip install -r requirements-dev.txt
+export OPENAI_API_KEY=your-key-here
+uvicorn main:app --reload
+```
+
+Then open http://127.0.0.1:8000. The beta invite code is set with `INVITE_CODE` (default: `namaste`).
+
+## Settings on Render
+
+Set these in Render → your service → Environment. Never put them in the code.
+
+| Setting | What it is |
+|---|---|
+| `OPENAI_API_KEY` | A separate OpenAI key just for the live site |
+| `INVITE_CODE` | The private code testers type to get in |
+| `SECRET_KEY` | A long random string that protects logins |
+| `DAILY_LIMIT_PER_PERSON` | Optional. AI uses per tester per day (default 60) |
+| `DAILY_LIMIT_TOTAL` | Optional. AI uses for everyone per day (default 500) |
+
+Build command: `pip install -r requirements.txt`
+Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+
+## Run the tests
+
+```
+pytest
+```
+
+## Original beta
+
+https://huggingface.co/spaces/rhead1998/desilingo
+
+## Coming soon
+
+desiunmute.com

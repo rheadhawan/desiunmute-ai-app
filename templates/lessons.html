@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Heritage Gaps · DesiUnmute{% endblock %}
+
+{% block content %}
+<section class="page-intro">
+  <h1>Heritage Gaps</h1>
+  <p class="lead">You grew up understanding a lot. These lessons fill in what usually gets missed: the things families expect you to just know.</p>
+</section>
+
+<section class="unit-list">
+  {% for unit in units %}
+    {% if unit.available %}
+    <a class="card unit" href="/lessons/{{ unit.id }}">
+      <span class="unit-number">Unit {{ unit.id }}</span>
+      <h2>{{ unit.title }}</h2>
+      <p>{{ unit.summary }}</p>
+      <span class="go">Start →</span>
+    </a>
+    {% else %}
+    <div class="card unit is-soon">
+      <span class="unit-number">Unit {{ unit.id }}</span>
+      <h2>{{ unit.title }}</h2>
+      <p>{{ unit.summary }}</p>
+      <span class="go">Coming soon</span>
+    </div>
+    {% endif %}
+  {% endfor %}
+</section>
+{% endblock %}

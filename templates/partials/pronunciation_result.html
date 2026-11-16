@@ -1,0 +1,40 @@
+<!-- The feedback that appears after the learner records -->
+{% set headings = {
+  "sounds natural": "Sounds natural",
+  "close": "Close!",
+  "keep practicing": "Let's keep practicing",
+} %}
+
+<article class="card result feedback level-{{ result.result_level | replace(' ', '-') }}">
+  <h2>{{ headings[result.result_level] }}</h2>
+  <p>{{ result.overall }}</p>
+
+  <p class="heard"><span class="label">We heard</span><br><strong>{{ result.heard }}</strong></p>
+
+  {% if result.went_well %}
+  <details open>
+    <summary>What went well</summary>
+    <ul>{% for item in result.went_well %}<li>{{ item }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+
+  {% if result.tips %}
+  <details open>
+    <summary>What to work on</summary>
+    <ul>{% for item in result.tips %}<li>{{ item }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+
+  {% if result.focus_sounds %}
+  <details>
+    <summary>Sounds to focus on</summary>
+    <ul>{% for item in result.focus_sounds %}<li>{{ item }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+
+  {% if result.better_example %}
+  <p class="say-it"><span class="label">Say it like this</span><br><strong>{{ result.better_example }}</strong></p>
+  {% endif %}
+
+  <p class="hint">Try again as many times as you like. Just record again.</p>
+</article>

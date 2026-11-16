@@ -1,0 +1,17 @@
+<!-- End-of-conversation summary (no scores) -->
+<div class="conversation-summary">
+  {% if summary.went_well %}
+  <h3>What went well</h3>
+  <ul>{% for item in summary.went_well %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% if summary.work_on %}
+  <h3>To work on</h3>
+  <ul>{% for item in summary.work_on %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% if summary.useful_phrases %}
+  <h3>Useful phrases from this conversation</h3>
+  <ul>{% for item in summary.useful_phrases %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+</div>

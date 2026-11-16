@@ -1,0 +1,7 @@
+<!-- Answer to "How do I say...?" -->
+<div class="say-it-result">
+  <p class="label">Say</p>
+  <p class="hindi-line">{{ result.say_it }}</p>
+  {% if result.note %}<p class="hint">{{ result.note }}</p>{% endif %}
+  {% if audio_url %}{% include "partials/audio_player.html" %}{% endif %}
+</div>

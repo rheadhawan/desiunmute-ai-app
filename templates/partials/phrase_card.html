@@ -1,0 +1,17 @@
+<!-- One Hindi phrase with "Hear it" and "Practice" (used in lessons) -->
+<div class="phrase-card">
+  <div class="phrase-text">
+    <span class="pick-hindi">{{ example.phrase }}</span>
+    <span class="pick-english">{{ example.english }}</span>
+    {% if example.note %}<span class="phrase-note">{{ example.note }}</span>{% endif %}
+  </div>
+  <div class="phrase-actions">
+    <button type="button" class="secondary small"
+            hx-post="/pronunciation/hear"
+            hx-vals='{{ {"phrase": example.phrase} | tojson }}'
+            hx-target="next .phrase-audio"
+            hx-disabled-elt="this">🔊 Hear it</button>
+    <a class="small-link" href="/pronunciation?phrase={{ example.phrase | urlencode }}">🎙 Practice</a>
+  </div>
+  <div class="phrase-audio"></div>
+</div>

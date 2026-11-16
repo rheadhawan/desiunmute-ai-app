@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Translate · DesiUnmute{% endblock %}
+
+{% block content %}
+<section class="page-intro">
+  <h1>Translate</h1>
+  <p class="lead">Type something in English. We'll show you how to say it naturally in Hindi.</p>
+</section>
+
+<!-- hx-post sends the form to /translate and puts the answer inside #result -->
+<form class="card translate-form"
+      hx-post="/translate"
+      hx-target="#result"
+      hx-indicator="#loading"
+      hx-disabled-elt="find button">
+
+  <label for="text">What do you want to say?</label>
+  <textarea id="text" name="text" rows="3" maxlength="300" placeholder="Have you eaten yet?" required></textarea>
+
+  <div class="options">
+    <fieldset>
+      <legend>I am</legend>
+      <label class="pill"><input type="radio" name="gender" value="Female" checked> Female</label>
+      <label class="pill"><input type="radio" name="gender" value="Male"> Male</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>I'm talking to</legend>
+      {% for option in talking_to_options %}
+      <label class="pill"><input type="radio" name="talking_to" value="{{ option }}" {% if loop.first %}checked{% endif %}> {{ option }}</label>
+      {% endfor %}
+    </fieldset>
+  </div>
+
+  <label class="check"><input type="checkbox" name="audio" value="Yes" checked> Play it in Hindi</label>
+
+  <button type="submit">Translate</button>
+  <p id="loading" class="loading">Working on it… this takes a few seconds.</p>
+</form>
+
+<div id="result" aria-live="polite"></div>
+
+<script src="/static/desiunmute.js?v=4"></script>
+{% endblock %}

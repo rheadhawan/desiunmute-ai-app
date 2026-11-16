@@ -1,0 +1,39 @@
+<!-- The answer that HTMX drops into the Translate page -->
+<article class="card result">
+  <p class="label">In Hindi</p>
+  <h2 class="hindi">{{ result.translation }}</h2>
+
+  {% if audio_url %}
+  {% include "partials/audio_player.html" %}
+  {% endif %}
+
+  <a class="practice-link" href="/pronunciation?phrase={{ result.translation | urlencode }}">🎙 Practice saying this →</a>
+
+  {% if result.breakdown %}
+  <details open>
+    <summary>Word by word</summary>
+    <ul>{% for item in result.breakdown %}<li>{{ item }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+
+  {% if result.pronunciation_tips %}
+  <details>
+    <summary>How to say it</summary>
+    <ul>{% for item in result.pronunciation_tips %}<li>{{ item }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+
+  {% if result.alternatives %}
+  <details>
+    <summary>Other ways to say it</summary>
+    <ul>{% for item in result.alternatives %}<li>{{ item }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+
+  {% if result.common_mistakes %}
+  <details>
+    <summary>Common mistakes</summary>
+    <ul>{% for item in result.common_mistakes %}<li>{{ item }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</article>

@@ -1,0 +1,18 @@
+<!-- Results of the "Do you know this?" check (no scores, just help) -->
+<div class="check-result">
+  {% if knows_it %}
+  <p class="check-summary good">You know this already! Skim the lesson or jump to the part about your own family.</p>
+  {% else %}
+  <p class="check-summary">This lesson will help. Here's what each answer means:</p>
+  {% endif %}
+
+  <ul class="check-list">
+    {% for result in results %}
+    <li class="{% if result.right %}right{% else %}wrong{% endif %}">
+      <strong>{{ result.question }}</strong><br>
+      {% if result.right %}✓ {{ result.answer }}{% else %}{% if result.picked %}You picked {{ result.picked }}. {% endif %}Answer: {{ result.answer }}{% endif %}
+      <br><span class="hint">{{ result.why }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>

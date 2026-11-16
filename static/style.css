@@ -1,0 +1,430 @@
+/* DesiUnmute styles
+   Warm cream background, deep plum text, marigold accent.
+   Written for phones first, then widened for bigger screens. */
+
+:root {
+  --cream: #fbf6ee;
+  --paper: #ffffff;
+  --ink: #2b1d2b;
+  --muted: #6e5f6b;
+  --plum: #6b2d5c;
+  --marigold: #e39b2d;
+  --marigold-soft: #fbe9cc;
+  --line: #eadfce;
+  --error: #a3342b;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: "Source Sans 3", system-ui, sans-serif;
+  font-size: 18px;
+  line-height: 1.55;
+}
+
+h1, h2, .logo {
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+a { color: var(--plum); }
+
+main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 18px 48px;
+}
+
+/* Header */
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.logo {
+  font-size: 1.5rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.logo span { color: var(--plum); }
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 0.95rem;
+}
+
+nav a { font-weight: 600; text-decoration: none; }
+nav a:hover { text-decoration: underline; }
+.soon { color: #b3a6ae; cursor: default; }
+
+/* Headings and intro text */
+
+.hero, .invite, .page-intro { margin: 20px 0 28px; }
+.invite .lead { margin-bottom: 24px; }
+
+.hero h1, .invite h1 { font-size: 2.3rem; margin: 0 0 14px; }
+.hero h1 span, .invite h1 span { color: var(--plum); }
+
+.page-intro h1 { font-size: 2rem; margin: 0 0 6px; }
+
+.lead { color: var(--muted); font-size: 1.1rem; margin: 0; }
+
+/* Cards */
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.features {
+  display: grid;
+  gap: 14px;
+}
+
+.feature {
+  display: block;
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color 0.15s;
+}
+
+a.feature:hover { border-color: var(--plum); }
+
+.feature h2 { font-size: 1.3rem; margin: 0 0 6px; }
+.feature p { margin: 0 0 10px; color: var(--muted); }
+.feature .go { font-weight: 600; color: var(--plum); }
+.feature.is-soon .go { color: #b3a6ae; }
+
+/* Forms */
+
+label { font-weight: 600; display: block; margin-bottom: 6px; }
+
+textarea, input[type="text"] {
+  width: 100%;
+  font: inherit;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--cream);
+  color: var(--ink);
+}
+
+textarea:focus, input[type="text"]:focus {
+  outline: 2px solid var(--marigold);
+  border-color: transparent;
+}
+
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 14px;
+}
+
+legend { font-weight: 600; margin-bottom: 6px; }
+
+.options { margin-top: 16px; }
+
+/* Radio buttons shown as pills */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+  margin: 0 6px 8px 0;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.pill:has(input:checked) {
+  background: var(--marigold-soft);
+  border-color: var(--marigold);
+}
+
+.check { font-weight: 400; display: flex; gap: 8px; align-items: center; }
+
+button {
+  margin-top: 16px;
+  width: 100%;
+  font: inherit;
+  font-weight: 600;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--plum);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:hover { background: #57234b; }
+button:disabled { opacity: 0.6; cursor: wait; }
+
+/* "Working on it…" only shows while HTMX is waiting for the AI */
+.loading { display: none; color: var(--muted); margin: 10px 0 0; }
+.htmx-request .loading, .loading.htmx-request { display: block; }
+
+.error { color: var(--error); margin: 8px 0 0; }
+
+/* Translate result */
+
+#result { margin-top: 18px; }
+
+.result .label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.result .hindi {
+  font-size: 1.9rem;
+  color: var(--plum);
+  margin: 4px 0 14px;
+}
+
+audio { width: 100%; margin-bottom: 10px; }
+
+details {
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+summary { font-weight: 600; cursor: pointer; }
+details ul { margin: 8px 0 0; padding-left: 20px; }
+
+.error-box { border-color: var(--error); color: var(--error); }
+
+/* Pronunciation Coach */
+
+.card + .card { margin-top: 14px; }
+
+.step {
+  font-weight: 600;
+  color: var(--plum);
+  margin: 0 0 12px;
+}
+
+.phrase-picks {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.pick {
+  display: block;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.pick:hover { border-color: var(--plum); }
+.pick.is-picked { background: var(--marigold-soft); border-color: var(--marigold); }
+.pick-hindi { display: block; font-weight: 600; color: var(--plum); }
+.pick-english { display: block; font-size: 0.9rem; color: var(--muted); }
+
+button.secondary {
+  background: var(--paper);
+  color: var(--plum);
+  border: 1px solid var(--plum);
+}
+
+button.secondary:hover { background: var(--marigold-soft); }
+button.small { margin-top: 0; width: auto; padding: 6px 12px; font-size: 0.9rem; }
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 10px;
+}
+
+.player audio { margin: 0; flex: 1; min-width: 0; }
+.slow-toggle.is-on { background: var(--marigold-soft); border-color: var(--marigold); }
+
+button.record { background: var(--marigold); color: var(--ink); margin-top: 0; }
+button.record:hover { background: #d18a1f; }
+button.record.is-recording { background: var(--error); color: #fff; }
+
+.hint { color: var(--muted); font-size: 0.9rem; margin: 10px 0 0; }
+
+#my-recording { margin-top: 14px; }
+.label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+
+.practice-link {
+  display: inline-block;
+  font-weight: 600;
+  margin: 4px 0 8px;
+  text-decoration: none;
+}
+
+.feedback h2 { margin: 0 0 6px; color: var(--plum); }
+.feedback.level-sounds-natural { border-left: 5px solid #3c8a5a; }
+.feedback.level-close { border-left: 5px solid var(--marigold); }
+.feedback.level-keep-practicing { border-left: 5px solid var(--plum); }
+.heard, .say-it { margin: 12px 0; }
+.heard strong, .say-it strong { font-size: 1.2rem; }
+
+/* Heritage Gaps */
+
+.unit-list { display: grid; gap: 14px; }
+.unit { display: block; color: var(--ink); text-decoration: none; }
+a.unit:hover { border-color: var(--plum); }
+.unit h2 { font-size: 1.3rem; margin: 4px 0 6px; }
+.unit p { margin: 0 0 10px; color: var(--muted); }
+.unit .go { font-weight: 600; color: var(--plum); }
+.unit.is-soon { opacity: 0.6; }
+.unit.is-soon .go { color: #b3a6ae; }
+
+.unit-number {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--marigold);
+}
+
+.back-link { display: inline-block; margin-bottom: 8px; text-decoration: none; font-weight: 600; }
+
+.draft-note {
+  display: inline-block;
+  margin: 12px 0 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--marigold-soft);
+  font-size: 0.85rem;
+}
+
+.card h2 { font-size: 1.4rem; margin: 0 0 8px; }
+.lesson-section p { margin: 0 0 10px; }
+
+.question { margin: 16px 0 6px; }
+.question legend { font-weight: 600; margin-bottom: 8px; }
+
+.check-result { margin-top: 18px; }
+.check-summary { font-weight: 600; }
+.check-summary.good { color: #3c8a5a; }
+.check-list { list-style: none; padding: 0; margin: 0; }
+.check-list li { padding: 10px 12px; margin-bottom: 8px; border-radius: 10px; }
+.check-list li.right { background: #e8f3ec; }
+.check-list li.wrong { background: var(--marigold-soft); }
+.check-list .hint { margin: 0; }
+
+.phrase-list { display: grid; gap: 8px; margin-top: 12px; }
+
+.phrase-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.phrase-note { display: block; font-size: 0.85rem; color: var(--muted); font-style: italic; }
+.phrase-actions { display: flex; align-items: center; gap: 14px; }
+.small-link { font-weight: 600; font-size: 0.9rem; text-decoration: none; }
+.phrase-audio .player { margin: 4px 0 0; }
+
+.family-examples, .tutor-answer { margin-top: 16px; }
+.tutor-answer p { margin: 0 0 8px; }
+
+.lesson-nav { margin-top: 24px; font-weight: 600; }
+
+/* Conversation Practice */
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.bubble {
+  max-width: 90%;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+.bubble p { margin: 0 0 4px; }
+
+.bubble.character {
+  align-self: flex-start;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 4px;
+}
+
+.bubble.learner {
+  align-self: flex-end;
+  background: var(--marigold-soft);
+  border-bottom-right-radius: 4px;
+}
+
+.bubble details { border-top: 0; padding: 4px 0 0; }
+.bubble .player { margin: 8px 0 0; }
+
+.hindi-line { font-weight: 600; color: var(--plum); font-size: 1.15rem; }
+
+.side-note {
+  margin-top: 8px !important;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--paper);
+  font-size: 0.9rem;
+}
+
+.chat-card .error-box { margin: 0; }
+#chat-controls { margin-top: 4px; }
+
+.say-it-result, .conversation-summary { margin-top: 16px; }
+.conversation-summary h3 { font-family: "Fraunces", Georgia, serif; margin: 14px 0 6px; }
+
+/* Footer */
+
+.site-footer {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 18px 32px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.site-footer p { margin: 4px 0; }
+
+/* Bigger screens */
+
+@media (min-width: 700px) {
+  .hero h1, .invite h1 { font-size: 3rem; }
+  .features { grid-template-columns: 1fr 1fr; }
+  .phrase-picks { grid-template-columns: 1fr 1fr; }
+  .phrase-card { grid-template-columns: 1fr auto; align-items: center; }
+  .phrase-audio { grid-column: 1 / -1; }
+  button { width: auto; }
+  .invite form { max-width: 420px; }
+}

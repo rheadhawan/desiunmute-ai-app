@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}{{ name }} · DesiUnmute{% endblock %}
+
+{% block content %}
+<a class="back-link" href="/conversation">← All conversations</a>
+
+<section class="page-intro">
+  <h1>{{ name }}</h1>
+  <p class="lead">{{ intro }}</p>
+</section>
+
+<!-- The chat. The conversation code is in static/desiunmute.js -->
+<section class="card chat-card" id="chat" data-slug="{{ slug }}">
+  <div id="chat-log" class="chat-log" aria-live="polite">
+    <p class="hint" id="chat-empty">When you're ready, start the conversation. They'll speak first.</p>
+  </div>
+
+  <p id="chat-loading" class="loading">…</p>
+
+  <button type="button" id="start-button">Start the conversation</button>
+
+  <div id="chat-controls" hidden>
+    <button type="button" id="talk-button" class="record">● Answer out loud</button>
+    <p id="talk-status" class="hint">Click, say your answer in Hindi, then click Stop. It sends by itself.</p>
+  </div>
+</section>
+
+<!-- Stuck? -->
+<section class="card">
+  <h2>How do I say…?</h2>
+  <p class="hint">Stuck mid-conversation? Ask in English. It won't interrupt the chat.</p>
+
+  <form hx-post="/conversation/{{ slug }}/say"
+        hx-target="#say-it"
+        hx-indicator="#say-loading"
+        hx-disabled-elt="find button">
+    <label for="question">What do you want to say?</label>
+    <input id="question" name="question" type="text" maxlength="300" autocomplete="off"
+           placeholder="I'll visit you in summer" required>
+    <button type="submit" class="secondary">Show me</button>
+    <p id="say-loading" class="loading">Finding the natural way to say it…</p>
+  </form>
+
+  <div id="say-it" aria-live="polite"></div>
+</section>
+
+<!-- Finish -->
+<section class="card">
+  <button type="button" id="end-button" class="secondary">End conversation and see how it went</button>
+  <p id="summary-loading" class="loading">Looking back at your conversation…</p>
+  <div id="summary" aria-live="polite"></div>
+  <p class="hint"><a href="/conversation/{{ slug }}">Start over</a></p>
+</section>
+
+<p class="hint">Your recordings are sent to OpenAI to understand what you said, then deleted. We never keep them.</p>
+
+<script src="/static/desiunmute.js?v=4"></script>
+{% endblock %}

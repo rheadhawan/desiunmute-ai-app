@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Conversation Practice · DesiUnmute{% endblock %}
+
+{% block content %}
+<section class="page-intro">
+  <h1>Conversation Practice</h1>
+  <p class="lead">Real conversations, out loud. Pick someone to talk to. They'll start, and you answer by speaking.</p>
+</section>
+
+<section class="unit-list">
+  {% for scenario in scenarios %}
+  <a class="card unit" href="/conversation/{{ scenario.slug }}">
+    <h2>{{ scenario.name }}</h2>
+    <p>{{ scenario.intro }}</p>
+    <span class="go">Start →</span>
+  </a>
+  {% endfor %}
+</section>
+{% endblock %}

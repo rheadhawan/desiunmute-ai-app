@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Pronunciation Coach · DesiUnmute{% endblock %}
+
+{% block content %}
+<section class="page-intro">
+  <h1>Pronunciation Coach</h1>
+  <p class="lead">Pick a phrase, listen to it, then say it yourself. We'll tell you what sounds natural and what to work on.</p>
+</section>
+
+<!-- 1. Choose the phrase -->
+<section class="card">
+  <p class="step">1 · Choose a phrase</p>
+
+  <div class="phrase-picks">
+    {% for item in practice_phrases %}
+    <a class="pick {% if item.phrase == phrase %}is-picked{% endif %}" href="/pronunciation?phrase={{ item.phrase | urlencode }}">
+      <span class="pick-hindi">{{ item.phrase }}</span>
+      <span class="pick-english">{{ item.english }}</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <form hx-post="/pronunciation/hear"
+        hx-target="#native-audio"
+        hx-indicator="#hear-loading"
+        hx-disabled-elt="find button">
+    <label for="target_phrase">…or type your own (in romanized Hindi)</label>
+    <input id="target_phrase" name="phrase" type="text" maxlength="300"
+           value="{{ phrase }}" placeholder="aap kaise hain?" autocomplete="off">
+    <button type="submit" class="secondary">🔊 Hear it</button>
+    <p id="hear-loading" class="loading">Getting the audio…</p>
+  </form>
+
+  <div id="native-audio" aria-live="polite"></div>
+</section>
+
+<!-- 2. Record yourself (the recording code is in static/desiunmute.js) -->
+<section class="card recorder" id="recorder">
+  <p class="step">2 · Your turn</p>
+
+  <button type="button" id="record-button" class="record">● Start recording</button>
+  <p id="record-status" class="hint">Say the phrase out loud. Recording stops by itself after 15 seconds.</p>
+
+  <div id="my-recording" hidden>
+    <p class="label">Your recording</p>
+    <audio id="my-audio" controls></audio>
+  </div>
+
+  <button type="button" id="feedback-button" disabled>Get feedback</button>
+  <p id="feedback-loading" class="loading">Listening to you… this takes a few seconds.</p>
+  <p class="hint">Your recording is sent to OpenAI to check your pronunciation, then deleted. We never keep it.</p>
+</section>
+
+<div id="result" aria-live="polite"></div>
+
+<script src="/static/desiunmute.js?v=4"></script>
+{% endblock %}

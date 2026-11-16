@@ -1,0 +1,17 @@
+<!-- One turn of the conversation: what the learner said, then the character's reply -->
+{% if reply.you_said %}
+<div class="bubble learner">
+  <p class="label">You said</p>
+  <p>{{ reply.you_said }}</p>
+  {% if reply.side_note %}<p class="side-note">💡 {{ reply.side_note }}</p>{% endif %}
+</div>
+{% endif %}
+
+<div class="bubble character">
+  <p class="hindi-line">{{ reply.reply }}</p>
+  <details>
+    <summary>What does it mean?</summary>
+    <p>{{ reply.reply_english }}</p>
+  </details>
+  {% if audio_url %}{% include "partials/audio_player.html" %}{% endif %}
+</div>
