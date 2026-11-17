@@ -113,7 +113,7 @@ def test_wrong_words_are_caught(monkeypatch):
 def test_coaching_happens_even_on_good_attempts(monkeypatch):
     result = run_pronunciation(monkeypatch, "aap kaise ho")
     assert result["overall"] == "Nice!"
-    assert "Sounds natural" in pronunciation.format_feedback(result)
+    assert "Every word came through" in pronunciation.format_feedback(result)
 
 
 def test_pronunciation_needs_audio_and_phrase():
@@ -299,3 +299,16 @@ def test_personalize_lesson_prompt_includes_lesson_and_gender(monkeypatch):
 def test_text_features_use_gpt_6_luna():
     import config
     assert config.TEXT_MODEL == "gpt-6-luna"
+
+
+def test_coach_is_told_it_cannot_hear_accents(monkeypatch):
+    monkeypatch.setattr(pronunciation, "transcribe_audio", lambda path: "नमस्ते जी")
+    monkeypatch.setattr(pronunciation, "romanize_transcript", lambda transcript, target: "namaste ji")
+    client = fake_client({"overall": "x", "went_well": [], "tips": [], "focus_sounds": [], "better_example": "namaste ji"})
+    monkeypatch.setattr(pronunciation, "client", client)
+
+    pronunciation.pronunciation_feedback("a.wav", "namaste ji")
+
+    prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "not how they sounded" in prompt
+    assert "Never say their" in prompt

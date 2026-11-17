@@ -1,8 +1,11 @@
-<!-- The feedback that appears after the learner records -->
+<!-- The feedback that appears after the learner records.
+     It checks WORDS, not ACCENT (an AI test on 2026-11-17 showed the
+     listening model can't tell a native accent from an American one),
+     so the headings only talk about words. -->
 {% set headings = {
-  "sounds natural": "Sounds natural",
-  "close": "Close!",
-  "keep practicing": "Let's keep practicing",
+  "sounds natural": "Every word came through",
+  "close": "Almost! A word or two was different",
+  "keep practicing": "Let's try that again",
 } %}
 
 <article class="card result feedback level-{{ result.result_level | replace(' ', '-') }}">
@@ -10,6 +13,8 @@
   <p>{{ result.overall }}</p>
 
   <p class="heard"><span class="label">We heard</span><br><strong>{{ result.heard }}</strong></p>
+
+  <p class="accent-note">🎧 This checks your words, not your accent. To check your accent, play the Hindi audio, then your recording, and listen for the difference.</p>
 
   {% if result.went_well %}
   <details open>

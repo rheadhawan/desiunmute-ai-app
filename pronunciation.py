@@ -117,9 +117,12 @@ Overall result: {result_level}
 
 IMPORTANT RULES:
 - ONLY comment on REAL differences visible in the transcription. DO NOT invent issues.
+- You only see the WORDS that were heard, not how they sounded. Never say their
+  accent or pronunciation sounded native, natural or correct, and never give
+  accent tips you can't know. Praise getting the words right instead.
 - Ignore softness, breathiness, accent, or volume.
 - Treat all dialects as valid Hindi. Natural shortening (nai for nahi) is fine.
-- If the result is "sounds natural", give specific praise and at most one small refinement.
+- If the result is "sounds natural", every word came through: praise that, and don't invent refinements.
 - Sound like a kind tutor, not a game. No scores, points, or grades.
 - Write ALL feedback in simple English. The learner is still learning Hindi.
 - Only use Hindi for the words being practiced, in romanized Hindi inside quotes (like 'namaste').
@@ -130,7 +133,7 @@ Reply ONLY with JSON in this exact format:
   "overall": "one short, honest, encouraging sentence",
   "went_well": ["something specific they got right", "..."],
   "tips": ["0-3 specific differences and how to fix them", "..."],
-  "focus_sounds": ["sounds to practice, e.g. 'the soft t in taala'", "..."],
+  "focus_sounds": ["only sounds in words that came out differently, else leave this empty"],
   "better_example": "the target phrase, romanized"
 }}
 """
@@ -155,9 +158,9 @@ def format_feedback(result):
         return "\n".join(f"- {item}" for item in items) or "- (nothing to fix here)"
 
     headings = {
-        "sounds natural": "Sounds natural",
-        "close": "Close",
-        "keep practicing": "Let's keep practicing",
+        "sounds natural": "Every word came through",
+        "close": "Almost! A word or two was different",
+        "keep practicing": "Let's try that again",
     }
 
     return f"""## {headings[result["result_level"]]}

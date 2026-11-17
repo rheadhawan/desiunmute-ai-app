@@ -289,6 +289,14 @@ button.record.is-recording { background: var(--error); color: #fff; }
 .feedback.level-close { border-left: 5px solid var(--marigold); }
 .feedback.level-keep-practicing { border-left: 5px solid var(--plum); }
 .heard, .say-it { margin: 12px 0; }
+
+.accent-note {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--marigold-soft);
+  font-size: 0.9rem;
+}
 .heard strong, .say-it strong { font-size: 1.2rem; }
 
 /* Heritage Gaps */

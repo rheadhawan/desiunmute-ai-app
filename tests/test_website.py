@@ -150,7 +150,8 @@ def test_feedback_for_a_recording(monkeypatch):
         files={"recording": ("recording.webm", b"fake recording", "audio/webm")},
     )
 
-    assert "Sounds natural" in response.text
+    assert "Every word came through" in response.text
+    assert "not your accent" in response.text
     assert "khana kha liya" in response.text
 
 
