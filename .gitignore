@@ -1,4 +1,9 @@
+# Made by Python automatically, different on every computer
 __pycache__/
 .pytest_cache/
+
+# Secrets never go on GitHub
 .env
+
+# Mac Finder files
 .DS_Store

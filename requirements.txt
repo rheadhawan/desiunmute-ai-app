@@ -4,6 +4,7 @@ uvicorn[standard]
 jinja2
 python-multipart
 itsdangerous
+tzdata              # time zones, so limits reset at midnight Pacific
 
 # The AI
 openai >= 1.68.0

@@ -1,5 +1,5 @@
 import json
-from config import client, TEXT_MODEL, NATURAL_HINDI_RULES, MAX_CONVERSATION_TURNS
+from config import client, TEXT_MODEL, NATURAL_HINDI_RULES, MAX_CONVERSATION_TURNS, MAX_TEXT_LENGTH
 from audio import transcribe_audio, make_audio
 
 # Conversation scenarios
@@ -135,6 +135,9 @@ Reply ONLY with JSON in this exact format:
 def how_do_i_say(question, scenario):
     if not question or question.strip() == "":
         raise ValueError("Type what you want to say in English.")
+
+    if len(question) > MAX_TEXT_LENGTH:
+        raise ValueError(f"Please keep it under {MAX_TEXT_LENGTH} characters.")
 
     prompt = f"""
 A Hindi learner is in this conversation: {SCENARIOS[scenario]}

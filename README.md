@@ -64,8 +64,14 @@ Set these in Render → your service → Environment. Never put them in the code
 | `OPENAI_API_KEY` | A separate OpenAI key just for the live site |
 | `INVITE_CODE` | The private code testers type to get in |
 | `SECRET_KEY` | A long random string that protects logins |
-| `DAILY_LIMIT_PER_PERSON` | Optional. AI uses per tester per day (default 60) |
-| `DAILY_LIMIT_TOTAL` | Optional. AI uses for everyone per day (default 500) |
+| `DAILY_LIMIT_PER_PERSON` | Optional. OpenAI calls per tester per day (default 90) |
+| `DAILY_LIMIT_TOTAL` | Optional. OpenAI calls for everyone per day (default 600) |
+| `DAILY_LIMIT_VOICE` | Optional. Voice (text-to-speech) calls per day (default 250) |
+| `DAILY_LIMIT_LISTEN` | Optional. Listening (speech-to-text) calls per day (default 250) |
+
+Limits count OpenAI calls (one click can make up to 3) and reset at midnight Pacific.
+They're kept in memory, so they also reset when Render restarts. Keep OpenAI's
+auto-recharge off as the backup. Every AI use is printed in Render's Logs.
 
 Build command: `pip install -r requirements.txt`
 Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`

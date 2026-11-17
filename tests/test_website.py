@@ -1,6 +1,15 @@
+import json
 from fastapi.testclient import TestClient
 
 import main
+import pytest
+
+
+# Every test starts with empty counts and no saved audio
+@pytest.fixture(autouse=True)
+def start_fresh(monkeypatch):
+    monkeypatch.setattr(main, "ai_uses", {"date": None, "total": 0, "voice": 0, "listen": 0, "people": {}})
+    monkeypatch.setattr(main, "saved_audio", {})
 
 
 # Website tests (no OpenAI calls, the translator is faked)
@@ -341,49 +350,255 @@ def test_fetch_without_invite_gets_redirect_header():
 
 # Daily limit tests
 
-def test_person_limit_stops_ai_with_friendly_message(monkeypatch):
+import threading
+
+
+def fresh_counts(monkeypatch, **limits):
+    monkeypatch.setattr(main, "ai_uses", {"date": None, "total": 0, "voice": 0, "listen": 0, "people": {}})
+    monkeypatch.setattr(main, "saved_audio", {})
+    for name, value in limits.items():
+        monkeypatch.setattr(main, name, value)
+
+
+def fake_feedback_simple(audio_path, target_phrase):
+    return {
+        "overall": "Nice!", "went_well": [], "tips": [], "focus_sounds": [],
+        "better_example": target_phrase, "heard": target_phrase,
+        "result_level": "sounds natural", "accuracy": 1.0,
+    }
+
+
+def test_translate_with_audio_counts_two_calls(monkeypatch):
     monkeypatch.setattr(main, "desiunmute_translate", fake_translation)
-    monkeypatch.setattr(main, "DAILY_LIMIT_PER_PERSON", 2)
-    monkeypatch.setattr(main, "ai_uses", {"date": None, "total": 0, "people": {}})
+    fresh_counts(monkeypatch)
+    invited_client().post("/translate", data={"text": "hi", "audio": "Yes"})
+    assert main.ai_uses["total"] == 2
+    assert main.ai_uses["voice"] == 1
+
+
+def test_translate_without_audio_counts_one_call(monkeypatch):
+    monkeypatch.setattr(main, "desiunmute_translate", fake_translation)
+    fresh_counts(monkeypatch)
+    invited_client().post("/translate", data={"text": "hi"})
+    assert main.ai_uses["total"] == 1
+    assert main.ai_uses["voice"] == 0
+
+
+def test_pronunciation_feedback_counts_listening_and_two_text_calls(monkeypatch):
+    monkeypatch.setattr(main, "pronunciation_feedback", fake_feedback_simple)
+    fresh_counts(monkeypatch)
+    invited_client().post(
+        "/pronunciation/feedback",
+        data={"target_phrase": "namaste ji"},
+        files={"recording": ("recording.webm", b"audio", "audio/webm")},
+    )
+    assert main.ai_uses["total"] == 3
+    assert main.ai_uses["listen"] == 1
+
+
+def test_conversation_reply_counts_all_three_models(monkeypatch):
+    monkeypatch.setattr(main, "conversation_practice", fake_practice)
+    fresh_counts(monkeypatch)
+    invited_client().post(
+        "/conversation/phone-call-with-nani/reply",
+        data={"history": '[{"role": "assistant", "content": "Hello beta!"}]'},
+        files={"recording": ("recording.webm", b"fake recording", "audio/webm")},
+    )
+    assert (main.ai_uses["total"], main.ai_uses["voice"], main.ai_uses["listen"]) == (3, 1, 1)
+
+
+def test_person_limit_counts_calls_not_clicks(monkeypatch):
+    monkeypatch.setattr(main, "desiunmute_translate", fake_translation)
+    fresh_counts(monkeypatch, DAILY_LIMIT_PER_PERSON=3)
     client = invited_client()
 
-    client.post("/translate", data={"text": "one"})
-    client.post("/translate", data={"text": "two"})
-    response = client.post("/translate", data={"text": "three"})
+    client.post("/translate", data={"text": "one", "audio": "Yes"})            # 2 calls
+    response = client.post("/translate", data={"text": "two", "audio": "Yes"})  # would be 4
 
     assert "come back tomorrow" in response.text
-    assert "khana kha liya?" not in response.text
+    assert main.ai_uses["total"] == 2
 
 
 def test_each_person_has_their_own_limit(monkeypatch):
     monkeypatch.setattr(main, "desiunmute_translate", fake_translation)
-    monkeypatch.setattr(main, "DAILY_LIMIT_PER_PERSON", 1)
-    monkeypatch.setattr(main, "ai_uses", {"date": None, "total": 0, "people": {}})
-
-    first = invited_client()
-    second = invited_client()
-    first.post("/translate", data={"text": "hi"})
-
-    response = second.post("/translate", data={"text": "hi"})
+    fresh_counts(monkeypatch, DAILY_LIMIT_PER_PERSON=1)
+    invited_client().post("/translate", data={"text": "hi"})
+    response = invited_client().post("/translate", data={"text": "hi"})
     assert "khana kha liya?" in response.text
 
 
 def test_total_limit_protects_the_bill(monkeypatch):
     monkeypatch.setattr(main, "start_conversation", fake_start)
-    monkeypatch.setattr(main, "DAILY_LIMIT_TOTAL", 1)
-    monkeypatch.setattr(main, "ai_uses", {"date": None, "total": 0, "people": {}})
-
-    invited_client().post("/conversation/phone-call-with-nani/start")
+    fresh_counts(monkeypatch, DAILY_LIMIT_TOTAL=2)
+    invited_client().post("/conversation/phone-call-with-nani/start")       # 2 calls
     data = invited_client().post("/conversation/phone-call-with-nani/start").json()
-
     assert "daily beta limit" in data["html"]
     assert data["history"] is None
 
 
+def test_voice_limit_stops_audio_but_text_still_works(monkeypatch):
+    monkeypatch.setattr(main, "desiunmute_translate", fake_translation)
+    fresh_counts(monkeypatch, DAILY_LIMIT_VOICE=1)
+    client = invited_client()
+
+    client.post("/translate", data={"text": "one", "audio": "Yes"})               # uses the 1 voice call
+    blocked = client.post("/translate", data={"text": "two", "audio": "Yes"})
+    text_only = client.post("/translate", data={"text": "three"})
+
+    assert "daily beta limit" in blocked.text
+    assert "khana kha liya?" in text_only.text
+
+
+def test_listening_limit(monkeypatch):
+    monkeypatch.setattr(main, "pronunciation_feedback", fake_feedback_simple)
+    fresh_counts(monkeypatch, DAILY_LIMIT_LISTEN=1)
+    client = invited_client()
+    send = lambda: client.post(
+        "/pronunciation/feedback",
+        data={"target_phrase": "namaste ji"},
+        files={"recording": ("recording.webm", b"audio", "audio/webm")},
+    )
+    send()
+    assert "daily beta limit" in send().text
+
+
 def test_new_day_resets_the_counts(monkeypatch):
     monkeypatch.setattr(main, "desiunmute_translate", fake_translation)
-    monkeypatch.setattr(main, "DAILY_LIMIT_TOTAL", 1)
-    monkeypatch.setattr(main, "ai_uses", {"date": "2000-01-01", "total": 999, "people": {}})
-
+    fresh_counts(monkeypatch, DAILY_LIMIT_TOTAL=1)
+    monkeypatch.setattr(main, "ai_uses", {"date": "2000-01-01", "total": 999, "voice": 999, "listen": 999, "people": {}})
     response = invited_client().post("/translate", data={"text": "hi"})
     assert "khana kha liya?" in response.text
+
+
+def test_day_follows_pacific_time(monkeypatch):
+    monkeypatch.setattr(main, "desiunmute_translate", fake_translation)
+    fresh_counts(monkeypatch)
+    monkeypatch.setattr(main, "today_pacific", lambda: "2026-11-17")
+    invited_client().post("/translate", data={"text": "hi"})
+    assert main.ai_uses["date"] == "2026-11-17"
+
+
+def test_pacific_date_is_a_real_date():
+    from datetime import date
+    assert date.fromisoformat(main.today_pacific())
+
+
+def test_simultaneous_requests_cannot_pass_the_limit(monkeypatch):
+    fresh_counts(monkeypatch, DAILY_LIMIT_TOTAL=10, DAILY_LIMIT_PER_PERSON=1000)
+
+    class FakeRequest:
+        session = {"person": "same-person"}
+
+    allowed = []
+
+    def click():
+        try:
+            main.count_ai_use(FakeRequest(), "test", text=1)
+            allowed.append(1)
+        except ValueError:
+            pass
+
+    threads = [threading.Thread(target=click) for _ in range(50)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(allowed) == 10
+    assert main.ai_uses["total"] == 10
+
+
+# Mistakes don't use up practice
+
+def test_empty_translate_box_is_not_counted(monkeypatch):
+    fresh_counts(monkeypatch)
+    response = invited_client().post("/translate", data={"text": "   "})
+    assert "Please type something" in response.text
+    assert main.ai_uses["total"] == 0
+
+
+def test_missing_phrase_is_checked_before_listening(monkeypatch):
+    called = []
+    monkeypatch.setattr(main, "pronunciation_feedback", lambda *args: called.append(1))
+    fresh_counts(monkeypatch)
+    response = invited_client().post(
+        "/pronunciation/feedback",
+        data={"target_phrase": " "},
+        files={"recording": ("recording.webm", b"audio", "audio/webm")},
+    )
+    assert "romanized Hindi" in response.text
+    assert called == [] and main.ai_uses["total"] == 0
+
+
+def test_empty_recording_is_not_counted(monkeypatch):
+    fresh_counts(monkeypatch)
+    data = invited_client().post(
+        "/conversation/phone-call-with-nani/reply",
+        data={"history": "[]"},
+        files={"recording": ("recording.webm", b"", "audio/webm")},
+    ).json()
+    assert "empty" in data["html"]
+    assert main.ai_uses["total"] == 0
+
+
+# Server-side caps
+
+def test_long_how_do_i_say_question_is_refused_before_ai(monkeypatch):
+    called = []
+    monkeypatch.setattr(main, "how_do_i_say", lambda *args: called.append(1))
+    fresh_counts(monkeypatch)
+    response = invited_client().post("/conversation/phone-call-with-nani/say", data={"question": "a" * 5000})
+    assert "under 300 characters" in response.text
+    assert called == [] and main.ai_uses["total"] == 0
+
+
+def test_too_many_history_messages_are_refused():
+    history = json.dumps([{"role": "user", "content": "hi"}] * 200)
+    response = invited_client().post("/conversation/phone-call-with-nani/summary", data={"history": history})
+    assert "Please start over" in response.text
+
+
+def test_long_conversation_is_not_counted(monkeypatch):
+    fresh_counts(monkeypatch)
+    history = json.dumps([{"role": "assistant", "content": "hi"}] * 40)
+    data = invited_client().post(
+        "/conversation/phone-call-with-nani/reply",
+        data={"history": history},
+        files={"recording": ("recording.webm", b"audio", "audio/webm")},
+    ).json()
+    assert "getting long" in data["html"]
+    assert main.ai_uses["total"] == 0
+
+
+def test_long_recording_is_refused(monkeypatch):
+    fresh_counts(monkeypatch)
+    response = invited_client().post(
+        "/pronunciation/feedback",
+        data={"target_phrase": "namaste ji"},
+        files={"recording": ("recording.webm", b"x" * (800 * 1024), "audio/webm")},
+    )
+    assert "under 15 seconds" in response.text
+    assert main.ai_uses["total"] == 0
+
+
+# Saved audio for lesson phrases
+
+def test_lesson_phrase_audio_is_made_once_then_reused(monkeypatch):
+    spoken = []
+    monkeypatch.setattr(main, "make_audio", lambda text: spoken.append(text) or b"audio")
+    fresh_counts(monkeypatch)
+    client = invited_client()
+
+    client.post("/pronunciation/hear", data={"phrase": "haan ji"})
+    client.post("/pronunciation/hear", data={"phrase": "haan ji"})
+
+    assert spoken == ["हाँ जी"]                 # made only once
+    assert main.ai_uses["voice"] == 1           # and counted only once
+
+
+def test_typed_phrase_counts_text_and_voice(monkeypatch):
+    monkeypatch.setattr(main, "make_audio", lambda text: b"audio")
+    monkeypatch.setattr(main, "phrase_to_devanagari", lambda phrase: "x")
+    fresh_counts(monkeypatch)
+    invited_client().post("/pronunciation/hear", data={"phrase": "mujhe chai pasand hai"})
+    assert (main.ai_uses["total"], main.ai_uses["voice"]) == (2, 1)

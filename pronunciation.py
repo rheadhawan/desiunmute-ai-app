@@ -195,6 +195,15 @@ PRACTICE_PHRASES = [
 ]
 
 
+# Finds the saved Devanagari for a ready-made or lesson phrase (or None)
+
+def saved_devanagari(phrase):
+    for item in PRACTICE_PHRASES + all_lesson_phrases():
+        if item["phrase"] == phrase.strip():
+            return item["devanagari"]
+    return None
+
+
 # Turns a romanized phrase into Devanagari so the voice can say it
 # with a Hindi accent (learners never see the Devanagari)
 
@@ -206,9 +215,9 @@ def phrase_to_devanagari(phrase):
         raise ValueError(f"Please keep the phrase under {MAX_TEXT_LENGTH} characters.")
 
     # Ready-made and lesson phrases already have it, so no AI call needed
-    for item in PRACTICE_PHRASES + all_lesson_phrases():
-        if item["phrase"] == phrase.strip():
-            return item["devanagari"]
+    saved = saved_devanagari(phrase)
+    if saved:
+        return saved
 
     prompt = """
 Write this romanized Hindi phrase in Devanagari. Keep the exact same words.

@@ -3,16 +3,18 @@ import json
 import base64
 import tempfile
 import secrets
-from datetime import date
+import threading
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from config import TALKING_TO
+from config import TALKING_TO, MAX_TEXT_LENGTH, MAX_CONVERSATION_TURNS
 from translate import desiunmute_translate
-from pronunciation import pronunciation_feedback, phrase_to_devanagari, PRACTICE_PHRASES
+from pronunciation import pronunciation_feedback, phrase_to_devanagari, saved_devanagari, PRACTICE_PHRASES
 from audio import make_audio
 from conversation import SCENARIOS, SCENARIO_INTROS, start_conversation, conversation_practice, how_do_i_say, conversation_summary
 from lessons import UNITS, get_unit, check_answers, personalize_lesson, ask_tutor
@@ -40,17 +42,42 @@ INVITE_CODE = os.getenv("INVITE_CODE", "namaste")
 
 
 # Daily AI limits (protects the OpenAI bill during the beta)
-# Each click that asks the AI counts as one use. Change these on Render
-# without touching the code. They reset every day, and when Render restarts.
-DAILY_LIMIT_PER_PERSON = int(os.getenv("DAILY_LIMIT_PER_PERSON", "60"))
-DAILY_LIMIT_TOTAL = int(os.getenv("DAILY_LIMIT_TOTAL", "500"))
+# We count every call to OpenAI, not every click, because one click can make
+# up to 3 calls (for example: listen to you + write a reply + speak it).
+#   text   = gpt-6-luna (cheapest)
+#   voice  = gpt-4o-mini-tts (most expensive, so it gets its own cap)
+#   listen = gpt-4o-transcribe (also its own cap)
+# Change any of these on Render (Environment) without touching the code.
+DAILY_LIMIT_PER_PERSON = int(os.getenv("DAILY_LIMIT_PER_PERSON", "90"))   # all calls, one tester
+DAILY_LIMIT_TOTAL = int(os.getenv("DAILY_LIMIT_TOTAL", "600"))            # all calls, everyone
+DAILY_LIMIT_VOICE = int(os.getenv("DAILY_LIMIT_VOICE", "250"))            # voice calls, everyone
+DAILY_LIMIT_LISTEN = int(os.getenv("DAILY_LIMIT_LISTEN", "250"))          # listening calls, everyone
 
-# Today's counts, kept in memory: {"date": ..., "total": 0, "people": {}}
-ai_uses = {"date": None, "total": 0, "people": {}}
+# Today's counts. Kept in memory, so they also reset when Render restarts.
+# (OpenAI's prepaid credit with auto-recharge off is the backup for that.)
+ai_uses = {"date": None, "total": 0, "voice": 0, "listen": 0, "people": {}}
+
+# The website answers several people at the same time (in "threads").
+# The lock makes sure only one of them updates the counts at a time,
+# so two clicks at the same moment can't both sneak past a limit.
+ai_lock = threading.Lock()
 
 
-# Recordings bigger than this are refused (about 30 seconds of speech)
-MAX_RECORDING_BYTES = 2 * 1024 * 1024
+# Today's date in California, so limits reset at midnight Pacific time
+# (Render's own clock is in UTC, which would reset at 4 PM).
+def today_pacific():
+    return datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
+
+
+# Audio for lesson and ready-made phrases, made once and reused.
+# They're the same for everyone, so this saves a lot of voice calls.
+# {devanagari: audio bytes}, emptied when Render restarts.
+saved_audio = {}
+
+
+# Recordings bigger than this are refused. The browser stops at 15 seconds,
+# which is well under this, so only made-up uploads get stopped here.
+MAX_RECORDING_BYTES = 750 * 1024
 
 
 # Helpers
@@ -67,29 +94,55 @@ def go_to_invite(request):
     return RedirectResponse("/invite", status_code=303)
 
 
-# Counts one AI use, or stops if a limit is reached.
-# Raises ValueError so the friendly-error code shows the message.
-def count_ai_use(request):
-    today = date.today().isoformat()
+# Counts the OpenAI calls an action is about to make, or stops if that would
+# go over a limit. Raises ValueError so the friendly-error code shows the message.
+# Call it only after the learner's input has passed its checks, so mistakes
+# like an empty box don't use up anyone's practice.
+def count_ai_use(request, action, text=0, voice=0, listen=0):
+    calls = text + voice + listen
 
-    # A new day starts with fresh counts
-    if ai_uses["date"] != today:
-        ai_uses["date"] = today
-        ai_uses["total"] = 0
-        ai_uses["people"] = {}
+    with ai_lock:
+        # 1. A new day starts with fresh counts
+        today = today_pacific()
+        if ai_uses["date"] != today:
+            ai_uses["date"] = today
+            ai_uses["total"] = 0
+            ai_uses["voice"] = 0
+            ai_uses["listen"] = 0
+            ai_uses["people"] = {}
 
-    # Each tester gets an id when they enter the invite code
-    person = request.session.get("person", "unknown")
-    used = ai_uses["people"].get(person, 0)
+        # 2. Check every limit before counting anything
+        # (each tester gets an id when they enter the invite code)
+        person = request.session.get("person", "unknown")
+        used = ai_uses["people"].get(person, 0)
 
-    if used >= DAILY_LIMIT_PER_PERSON:
-        raise ValueError("You've practiced a lot today! The beta has a daily limit, so come back tomorrow.")
+        if used + calls > DAILY_LIMIT_PER_PERSON:
+            raise ValueError("You've practiced a lot today! The beta has a daily limit, so come back tomorrow.")
 
-    if ai_uses["total"] >= DAILY_LIMIT_TOTAL:
-        raise ValueError("DesiUnmute has reached its daily beta limit. Please come back tomorrow!")
+        if (
+            ai_uses["total"] + calls > DAILY_LIMIT_TOTAL
+            or ai_uses["voice"] + voice > DAILY_LIMIT_VOICE
+            or ai_uses["listen"] + listen > DAILY_LIMIT_LISTEN
+        ):
+            raise ValueError("DesiUnmute has reached its daily beta limit. Please come back tomorrow!")
 
-    ai_uses["people"][person] = used + 1
-    ai_uses["total"] += 1
+        # 3. Count it
+        ai_uses["people"][person] = used + calls
+        ai_uses["total"] += calls
+        ai_uses["voice"] += voice
+        ai_uses["listen"] += listen
+        totals = f"total {ai_uses['total']}/{DAILY_LIMIT_TOTAL}, voice {ai_uses['voice']}/{DAILY_LIMIT_VOICE}, listen {ai_uses['listen']}/{DAILY_LIMIT_LISTEN}"
+
+    # 4. Shows up in Render's Logs, so you can see how DesiUnmute is being used
+    print(f"AI use: {action} | person {person[:6]} used {used + calls}/{DAILY_LIMIT_PER_PERSON} | today {totals}")
+
+
+# Checks typed text before any AI is used (the AI files check again, that's fine)
+def check_typed_text(text, empty_message):
+    if not text or text.strip() == "":
+        raise ValueError(empty_message)
+    if len(text) > MAX_TEXT_LENGTH:
+        raise ValueError(f"Please keep it under {MAX_TEXT_LENGTH} characters.")
 
 
 # Shows a friendly message instead of a crash.
@@ -116,7 +169,7 @@ def save_recording(recording):
         raise ValueError("The recording was empty. Please try again.")
 
     if len(audio_bytes) > MAX_RECORDING_BYTES:
-        raise ValueError("That recording is too long. Please keep it under 30 seconds.")
+        raise ValueError("That recording is too long. Please keep it under 15 seconds.")
 
     # Chrome records .webm and Safari records .mp4. The file ending
     # tells OpenAI which kind it is, so keep the right one.
@@ -206,7 +259,8 @@ def translate_result(
         talking_to = "A friend"
 
     try:
-        count_ai_use(request)
+        check_typed_text(text, "Please type something in English to translate.")
+        count_ai_use(request, "translate", text=1, voice=1 if audio == "Yes" else 0)
         result = desiunmute_translate(text, gender, talking_to, audio)
     except Exception as error:
         return show_error(request, error)
@@ -240,9 +294,22 @@ def hear_phrase(request: Request, phrase: str = Form("")):
         return go_to_invite(request)
 
     try:
-        count_ai_use(request)
-        devanagari = phrase_to_devanagari(phrase)
-        audio_bytes = make_audio(devanagari)
+        check_typed_text(phrase, "Type or pick a phrase first.")
+        saved = saved_devanagari(phrase)
+
+        if saved and saved in saved_audio:
+            # Already made this one: no AI needed, nothing to count
+            audio_bytes = saved_audio[saved]
+        elif saved:
+            # A lesson or ready-made phrase: make the audio once, then reuse it
+            count_ai_use(request, "hear (saved phrase)", voice=1)
+            audio_bytes = make_audio(saved)
+            saved_audio[saved] = audio_bytes
+        else:
+            # A phrase the learner typed: write it in Devanagari, then speak it
+            count_ai_use(request, "hear (typed phrase)", text=1, voice=1)
+            devanagari = phrase_to_devanagari(phrase)
+            audio_bytes = make_audio(devanagari)
     except Exception as error:
         return show_error(request, error)
 
@@ -263,14 +330,17 @@ def pronunciation_result(
     if not is_invited(request):
         return go_to_invite(request)
 
+    if target_phrase.strip() == "":
+        return show_error(request, ValueError("Please type the phrase in romanized Hindi."))
+
     # We never keep recordings: save for a moment, use it, delete it
     try:
-        count_ai_use(request)
         audio_path = save_recording(recording)
     except ValueError as error:
         return show_error(request, error)
 
     try:
+        count_ai_use(request, "pronunciation feedback", text=2, listen=1)
         result = pronunciation_feedback(audio_path, target_phrase)
     except Exception as error:
         return show_error(request, error)
@@ -335,7 +405,8 @@ def lesson_family(request: Request, unit_id: int, family: str = Form(""), gender
         return show_error(request, ValueError("That lesson isn't ready yet."))
 
     try:
-        count_ai_use(request)
+        check_typed_text(family, "Tell us a little about your family first (for example: my Nani lives in Jaipur).")
+        count_ai_use(request, "family examples", text=1)
         examples = personalize_lesson(unit, family, gender)
     except Exception as error:
         return show_error(request, error)
@@ -354,7 +425,8 @@ def lesson_ask(request: Request, unit_id: int, question: str = Form("")):
         return show_error(request, ValueError("That lesson isn't ready yet."))
 
     try:
-        count_ai_use(request)
+        check_typed_text(question, "Type a question first.")
+        count_ai_use(request, "ask the tutor", text=1)
         answer = ask_tutor(unit, question)
     except Exception as error:
         return show_error(request, error)
@@ -380,7 +452,8 @@ def read_history(history_text):
     except json.JSONDecodeError:
         raise ValueError("Something went wrong with this conversation. Please start over.")
 
-    if not isinstance(history, list):
+    # The longest real conversation: the opening line + 20 replies each way
+    if not isinstance(history, list) or len(history) > MAX_CONVERSATION_TURNS * 2 + 1:
         raise ValueError("Something went wrong with this conversation. Please start over.")
 
     for message in history:
@@ -447,9 +520,12 @@ def conversation_start(request: Request, slug: str):
     if not is_invited(request):
         return go_to_invite(request)
 
+    if slug not in SCENARIO_SLUGS:
+        return chat_error(ValueError("Please pick a conversation."))
+
     try:
-        count_ai_use(request)
-        reply, history = start_conversation(SCENARIO_SLUGS.get(slug, ""))
+        count_ai_use(request, "conversation start", text=1, voice=1)
+        reply, history = start_conversation(SCENARIO_SLUGS[slug])
     except Exception as error:
         return chat_error(error)
 
@@ -471,15 +547,20 @@ def conversation_reply(
     if not is_invited(request):
         return go_to_invite(request)
 
+    if slug not in SCENARIO_SLUGS:
+        return chat_error(ValueError("Please pick a conversation."))
+
     try:
         past_history = read_history(history)
-        count_ai_use(request)
+        if len(past_history) >= MAX_CONVERSATION_TURNS * 2:
+            raise ValueError("This conversation is getting long! Start a new one to keep practicing.")
         audio_path = save_recording(recording)
     except ValueError as error:
         return chat_error(error)
 
     try:
-        reply, new_history = conversation_practice(SCENARIO_SLUGS.get(slug, ""), audio_path, past_history)
+        count_ai_use(request, "conversation reply", text=1, voice=1, listen=1)
+        reply, new_history = conversation_practice(SCENARIO_SLUGS[slug], audio_path, past_history)
     except Exception as error:
         return chat_error(error)
     finally:
@@ -502,7 +583,8 @@ def conversation_say(request: Request, slug: str, question: str = Form("")):
         return show_error(request, ValueError("Please pick a conversation."))
 
     try:
-        count_ai_use(request)
+        check_typed_text(question, "Type what you want to say in English.")
+        count_ai_use(request, "how do I say", text=1, voice=1)
         result = how_do_i_say(question, SCENARIO_SLUGS[slug])
     except Exception as error:
         return show_error(request, error)
@@ -525,7 +607,7 @@ def conversation_end(request: Request, slug: str, history: str = Form("[]")):
         # Only count conversations where the learner actually said something
         if not any(message["role"] == "user" for message in past_history):
             raise ValueError("Say something first! Then you'll get a summary.")
-        count_ai_use(request)
+        count_ai_use(request, "conversation summary", text=1)
         summary = conversation_summary(SCENARIO_SLUGS.get(slug, ""), past_history)
     except Exception as error:
         return show_error(request, error)
