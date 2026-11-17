@@ -7,3 +7,6 @@ __pycache__/
 
 # Mac Finder files
 .DS_Store
+
+# Voice test recordings
+voice_test/

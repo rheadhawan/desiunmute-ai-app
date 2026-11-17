@@ -9,3 +9,5 @@ tzdata              # time zones, so limits reset at midnight Pacific
 # The AI
 openai >= 1.68.0
 jiwer
+websockets          # the voice talks to OpenAI over a live connection
+lameenc             # turns the voice's raw audio into small MP3s

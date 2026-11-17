@@ -172,15 +172,100 @@ def test_summary_needs_a_conversation():
 
 # Audio tests
 
-def test_voice_gets_hindi_accent_instructions(monkeypatch):
-    client = MagicMock()
-    client.audio.speech.create.return_value.read.return_value = b"mp3"
-    monkeypatch.setattr(audio, "client", client)
+import array
+import base64
+import contextlib
+import types
 
-    assert audio.make_audio("नमस्ते") == b"mp3"
-    kwargs = client.audio.speech.create.call_args.kwargs
-    assert kwargs["input"] == "नमस्ते"
-    assert "Hindi" in kwargs["instructions"]
+
+# Makes pretend audio: speech is a loud tone, a pause is silence (24,000 samples a second)
+def pretend_audio(*parts):
+    samples = array.array("h")
+    for kind, seconds in parts:
+        count = int(24000 * seconds)
+        if kind == "speech":
+            samples.extend(8000 if i % 20 < 10 else -8000 for i in range(count))
+        else:
+            samples.extend(0 for i in range(count))
+    return samples.tobytes()
+
+
+SMOOTH = pretend_audio(("speech", 1.0), ("pause", 0.2), ("speech", 1.0))
+ODD_PAUSE = pretend_audio(("speech", 1.0), ("pause", 0.6), ("speech", 1.0))
+
+
+# A pretend realtime connection. takes = [(audio, words it says it spoke), ...]
+def pretend_voice(monkeypatch, takes):
+    sessions = []
+
+    class Connection:
+        def __init__(self):
+            self.session = types.SimpleNamespace(update=lambda **kwargs: sessions.append(kwargs["session"]))
+            self.conversation = types.SimpleNamespace(item=types.SimpleNamespace(create=lambda **kwargs: None))
+            self.response = types.SimpleNamespace(create=lambda **kwargs: None)
+
+        def __iter__(self):
+            pcm, words = takes.pop(0)
+            yield types.SimpleNamespace(type="response.output_audio.delta", delta=base64.b64encode(pcm).decode())
+            yield types.SimpleNamespace(type="response.output_audio_transcript.delta", delta=words)
+            yield types.SimpleNamespace(type="response.done")
+
+    @contextlib.contextmanager
+    def connect(model):
+        assert model == "gpt-realtime-2.1-mini"
+        yield Connection()
+
+    client = MagicMock()
+    client.realtime.connect = connect
+    monkeypatch.setattr(audio, "client", client)
+    return sessions
+
+
+def test_voice_uses_marin_and_hindi_read_aloud_rules(monkeypatch):
+    sessions = pretend_voice(monkeypatch, [(SMOOTH, "नमस्ते जी")])
+    audio.make_audio("नमस्ते जी")
+    session = sessions[0]
+    assert session["audio"]["output"]["voice"] == "marin"
+    assert "word for word" in session["instructions"]
+    assert "Indian accent" in session["instructions"]
+
+
+def test_smooth_take_is_kept_and_turned_into_mp3(monkeypatch):
+    pretend_voice(monkeypatch, [(SMOOTH, "नमस्ते जी।")])     # punctuation differences are fine
+    result = audio.make_audio("नमस्ते जी")
+    assert result[:3] == b"ID3" or result[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")   # an MP3
+    assert len(result) < len(SMOOTH) / 3                                                 # much smaller
+
+
+def test_odd_pause_is_re_recorded(monkeypatch):
+    takes = [(ODD_PAUSE, "नानी जी"), (SMOOTH, "नानी जी")]
+    pretend_voice(monkeypatch, takes)
+    audio.make_audio("नानी जी")
+    assert takes == []          # both takes were used: the odd one, then a smooth one
+
+
+def test_keeps_smoothest_take_after_three_tries(monkeypatch):
+    longer_pause = pretend_audio(("speech", 1.0), ("pause", 0.9), ("speech", 1.0))
+    pretend_voice(monkeypatch, [(longer_pause, "नानी जी"), (ODD_PAUSE, "नानी जी"), (longer_pause, "नानी जी")])
+    result = audio.make_audio("नानी जी")
+    assert result == audio.to_mp3(ODD_PAUSE)      # 0.6s beats 0.9s
+
+
+def test_take_that_changes_the_words_is_not_kept(monkeypatch):
+    pretend_voice(monkeypatch, [(SMOOTH, "हेलो"), (ODD_PAUSE, "नमस्ते जी"), (ODD_PAUSE, "नमस्ते जी")])
+    result = audio.make_audio("नमस्ते जी")
+    assert result == audio.to_mp3(ODD_PAUSE)      # a pause is better than the wrong words
+
+
+def test_longest_pause_measures_the_middle_only():
+    with_edges = pretend_audio(("pause", 1.0), ("speech", 0.5), ("pause", 0.3), ("speech", 0.5), ("pause", 1.0))
+    assert abs(audio.longest_pause(with_edges) - 0.3) < 0.05
+
+
+def test_no_audio_is_an_error(monkeypatch):
+    pretend_voice(monkeypatch, [(b"", "")])
+    with pytest.raises(RuntimeError):
+        audio.make_audio("नमस्ते")
 
 
 # Lesson content checks (catch typos in lessons.py)

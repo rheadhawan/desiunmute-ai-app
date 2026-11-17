@@ -15,8 +15,10 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Luna and Terra both got Hindi gender and respect forms right, and Luna
 # costs about a tenth of Terra.
 TEXT_MODEL = "gpt-6-luna"
-VOICE_MODEL = "gpt-4o-mini-tts"
-VOICE_NAME = "alloy"
+# gpt-4o-mini-tts shuts down Jan 6, 2027. Rhea compared voices with try_voices.py
+# on 2026-11-17 and picked Marin from gpt-realtime-2.1-mini (see audio.py).
+VOICE_MODEL = "gpt-realtime-2.1-mini"
+VOICE_NAME = "marin"
 TRANSCRIBE_MODEL = "gpt-4o-transcribe"
 
 # Limits (to protect the OpenAI budget)
