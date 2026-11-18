@@ -10,6 +10,8 @@ import pytest
 def start_fresh(monkeypatch):
     monkeypatch.setattr(main, "ai_uses", {"date": None, "total": 0, "voice": 0, "listen": 0, "people": {}})
     monkeypatch.setattr(main, "saved_audio", {})
+    # Tests act as if Azure isn't set up, unless a test turns it on
+    monkeypatch.setattr(main, "azure_is_set_up", lambda: False)
 
 
 # Website tests (no OpenAI calls, the translator is faked)
@@ -603,3 +605,65 @@ def test_typed_phrase_counts_text_and_voice(monkeypatch):
     fresh_counts(monkeypatch)
     invited_client().post("/pronunciation/hear", data={"phrase": "mujhe chai pasand hai"})
     assert (main.ai_uses["total"], main.ai_uses["voice"]) == (2, 1)
+
+
+# Pronunciation Coach with Azure (accent check)
+
+def send_recording(client, phrase, file_name, content_type):
+    return client.post(
+        "/pronunciation/feedback",
+        data={"target_phrase": phrase},
+        files={"recording": (file_name, b"audio", content_type)},
+    )
+
+
+def use_azure(monkeypatch):
+    monkeypatch.setattr(main, "azure_is_set_up", lambda: True)
+    references = []
+
+    def fake_azure_feedback(audio_path, target_phrase, reference=None):
+        references.append(reference)
+        result = fake_feedback_simple(audio_path, target_phrase)
+        result["accent_checked"] = True
+        return result
+
+    monkeypatch.setattr(main, "pronunciation_feedback", fake_azure_feedback)
+    return references
+
+
+def test_ready_made_phrase_uses_azure_with_saved_devanagari(monkeypatch):
+    references = use_azure(monkeypatch)
+    fresh_counts(monkeypatch)
+    response = send_recording(invited_client(), "namaste ji", "recording.wav", "audio/wav")
+
+    assert references == ["नमस्ते जी"]
+    assert (main.ai_uses["total"], main.ai_uses["listen"]) == (3, 1)   # 2 text + Azure
+    assert "Every word came through, and it sounds natural" in response.text
+    assert "your words and your accent" in response.text
+
+
+def test_typed_phrase_with_azure_counts_the_devanagari_call(monkeypatch):
+    references = use_azure(monkeypatch)
+    monkeypatch.setattr(main, "phrase_to_devanagari", lambda phrase: "मुझे चाय पसंद है")
+    fresh_counts(monkeypatch)
+    send_recording(invited_client(), "mujhe chai pasand hai", "recording.wav", "audio/wav")
+
+    assert references == ["मुझे चाय पसंद है"]
+    assert main.ai_uses["total"] == 4
+
+
+def test_recording_that_isnt_wav_checks_words_only(monkeypatch):
+    use_azure(monkeypatch)
+    used = []
+    monkeypatch.setattr(main, "pronunciation_feedback", lambda path, phrase: used.append(phrase) or fake_feedback_simple(path, phrase))
+    fresh_counts(monkeypatch)
+    response = send_recording(invited_client(), "namaste ji", "recording.webm", "audio/webm")
+
+    assert used == ["namaste ji"]
+    assert "your words, not your accent" in response.text
+
+
+def test_coach_page_mentions_azure_only_when_set_up(monkeypatch):
+    assert "sent to OpenAI" in invited_client().get("/pronunciation").text
+    monkeypatch.setattr(main, "azure_is_set_up", lambda: True)
+    assert "sent to Microsoft Azure" in invited_client().get("/pronunciation").text

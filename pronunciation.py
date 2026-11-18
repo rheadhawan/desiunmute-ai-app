@@ -3,6 +3,7 @@ import re
 import jiwer
 from config import client, TEXT_MODEL, NATURAL_HINDI_RULES, MAX_TEXT_LENGTH
 from audio import transcribe_audio
+from azure_speech import check_pronunciation, NATURAL_ACCURACY
 from lessons import all_lesson_phrases
 
 # Romanized Hindi has no single correct spelling (kaise / kese / kayse),
@@ -69,9 +70,50 @@ Reply ONLY with JSON: {{"romanized": "..."}}
     return json.loads(response.choices[0].message.content)["romanized"]
 
 
-# Pronunciation feedback function
+# What the coach is told about the accent
 
-def pronunciation_feedback(user_audio, target_phrase):
+# Without Azure we only know which WORDS came through (OpenAI's listening
+# models can't tell a native accent from an American one, tested 2026-11-17)
+WORDS_ONLY_RULES = """
+- You only see the WORDS that were heard, not how they sounded. Never say their
+  accent or pronunciation sounded native, natural or correct, and never give
+  accent tips you can't know. Praise getting the words right instead.
+- Ignore softness, breathiness, accent, or volume.
+- If the result is "sounds natural", every word came through: praise that, and don't invent refinements.
+- focus_sounds: only sounds in words that came out differently, else leave it empty.
+"""
+
+
+def accent_rules(accent):
+    if accent["accuracy"] >= NATURAL_ACCURACY:
+        how_it_sounded = "natural, like a Hindi speaker"
+    else:
+        how_it_sounded = "less natural, probably an English accent"
+
+    weak_words = ", ".join(accent["weak_words"]) or "none in particular"
+
+    return f"""
+A speech checker listened to the SOUNDS (you can't hear the recording yourself):
+- Overall it sounded: {how_it_sounded}
+- Words that sounded least natural (in Devanagari): {weak_words}
+
+- Only repeat what the checker found. Never invent problems or praise.
+- If it sounded natural, say so warmly and don't invent refinements.
+- If it sounded less natural, name the words to listen to again (in romanized
+  Hindi, never Devanagari) and give 1-2 gentle tips that commonly help English
+  speakers with those words (for example: soft "t" and "d" with the tongue
+  touching the teeth, short clear vowels, no English "r" sound). Say "try",
+  because you can't know exactly which sound was off.
+- Never mention numbers or scores.
+- focus_sounds: only sounds in those words, else leave it empty.
+"""
+
+
+# Pronunciation feedback function
+# reference is the phrase in Devanagari. When it's given, Azure listens to
+# the accent too. Without it, OpenAI checks the words only.
+
+def pronunciation_feedback(user_audio, target_phrase, reference=None):
     if user_audio is None:
         raise ValueError("Please record your pronunciation.")
 
@@ -81,11 +123,19 @@ def pronunciation_feedback(user_audio, target_phrase):
     if len(target_phrase) > MAX_TEXT_LENGTH:
         raise ValueError(f"Please keep the phrase under {MAX_TEXT_LENGTH} characters.")
 
-    # 1. TRANSCRIBE AUDIO
-    transcript = transcribe_audio(user_audio)
+    # 1. LISTEN (Azure also checks the accent)
+    accent = None
+    if reference:
+        accent = check_pronunciation(user_audio, reference)
+        transcript = accent["heard"]
+    else:
+        transcript = transcribe_audio(user_audio)
 
     # 2. ROMANIZE IT so we compare romanized with romanized
-    heard = romanize_transcript(transcript, target_phrase)
+    if transcript.strip() == "":
+        heard = ""   # nothing was heard, so nothing to romanize
+    else:
+        heard = romanize_transcript(transcript, target_phrase)
 
     # 3. MEASURE DIFFERENCE (ignoring spelling differences)
     target_clean = simplify_spelling(target_phrase)
@@ -100,7 +150,9 @@ def pronunciation_feedback(user_audio, target_phrase):
         error_rate = min(jiwer.wer(target_clean, heard_clean), 1.0)
 
     # 4. PICK A RESULT (internal score stays the same every time)
-    if error_rate <= 0.15:
+    if error_rate <= 0.15 and accent and accent["accuracy"] < NATURAL_ACCURACY:
+        result_level = "polish the sounds"   # right words, English-sounding accent
+    elif error_rate <= 0.15:
         result_level = "sounds natural"
     elif error_rate <= 0.4:
         result_level = "close"
@@ -108,6 +160,11 @@ def pronunciation_feedback(user_audio, target_phrase):
         result_level = "keep practicing"
 
     # 5. AI COACHING (for every attempt, good ones too)
+    if accent is None:
+        sound_rules = WORDS_ONLY_RULES
+    else:
+        sound_rules = accent_rules(accent)
+
     feedback_prompt = f"""
 You are a warm, encouraging Hindi pronunciation coach for Indian heritage learners.
 
@@ -117,12 +174,9 @@ Overall result: {result_level}
 
 IMPORTANT RULES:
 - ONLY comment on REAL differences visible in the transcription. DO NOT invent issues.
-- You only see the WORDS that were heard, not how they sounded. Never say their
-  accent or pronunciation sounded native, natural or correct, and never give
-  accent tips you can't know. Praise getting the words right instead.
-- Ignore softness, breathiness, accent, or volume.
+- If words came out differently, start with those.
 - Treat all dialects as valid Hindi. Natural shortening (nai for nahi) is fine.
-- If the result is "sounds natural", every word came through: praise that, and don't invent refinements.
+{sound_rules}
 - Sound like a kind tutor, not a game. No scores, points, or grades.
 - Write ALL feedback in simple English. The learner is still learning Hindi.
 - Only use Hindi for the words being practiced, in romanized Hindi inside quotes (like 'namaste').
@@ -133,7 +187,7 @@ Reply ONLY with JSON in this exact format:
   "overall": "one short, honest, encouraging sentence",
   "went_well": ["something specific they got right", "..."],
   "tips": ["0-3 specific differences and how to fix them", "..."],
-  "focus_sounds": ["only sounds in words that came out differently, else leave this empty"],
+  "focus_sounds": ["see the focus_sounds rule above"],
   "better_example": "the target phrase, romanized"
 }}
 """
@@ -147,8 +201,24 @@ Reply ONLY with JSON in this exact format:
     result = json.loads(response.choices[0].message.content)
     result["heard"] = heard
     result["result_level"] = result_level
+    result["accent_checked"] = accent is not None
     result["accuracy"] = round(1 - error_rate, 2)   # saved for progress tracking later, not shown
     return result
+
+
+# The heading at the top of the feedback (shared by the website and Gradio)
+
+def feedback_heading(result):
+    if result["result_level"] == "sounds natural" and result.get("accent_checked"):
+        return "Every word came through, and it sounds natural"
+
+    headings = {
+        "sounds natural": "Every word came through",
+        "polish the sounds": "Every word came through. Now let's polish the sounds",
+        "close": "Almost! A word or two was different",
+        "keep practicing": "Let's try that again",
+    }
+    return headings[result["result_level"]]
 
 
 # Turns the feedback into nicely formatted text for the screen
@@ -157,13 +227,7 @@ def format_feedback(result):
     def bullet_list(items):
         return "\n".join(f"- {item}" for item in items) or "- (nothing to fix here)"
 
-    headings = {
-        "sounds natural": "Every word came through",
-        "close": "Almost! A word or two was different",
-        "keep practicing": "Let's try that again",
-    }
-
-    return f"""## {headings[result["result_level"]]}
+    return f"""## {feedback_heading(result)}
 
 {result.get("overall", "")}
 

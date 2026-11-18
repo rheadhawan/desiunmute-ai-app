@@ -6,6 +6,7 @@ import translate
 import pronunciation
 import conversation
 import audio
+import azure_speech
 
 
 # Fake OpenAI helpers (so tests don't cost money or need an API key)
@@ -312,3 +313,117 @@ def test_coach_is_told_it_cannot_hear_accents(monkeypatch):
     prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
     assert "not how they sounded" in prompt
     assert "Never say their" in prompt
+
+
+# Azure accent check
+
+def azure_answer(accuracy, words):
+    return {
+        "RecognitionStatus": "Success",
+        "DisplayText": "नमस्ते जी।",
+        "NBest": [{
+            "Display": "नमस्ते जी।",
+            "AccuracyScore": accuracy,
+            "Words": [{"Word": w, "AccuracyScore": a, "ErrorType": e} for w, a, e in words],
+        }],
+    }
+
+
+def test_azure_answer_finds_weak_words():
+    answer = azure_answer(76, [("नमस्ते", 70, "None"), ("जी", 95, "None"), ("आप", 0, "Omission")])
+    result = azure_speech.read_azure_answer(answer)
+    assert result == {"heard": "नमस्ते जी।", "accuracy": 76, "weak_words": ["नमस्ते"]}
+
+
+def test_azure_answer_with_scores_inside_pronunciation_assessment():
+    answer = {
+        "RecognitionStatus": "Success",
+        "DisplayText": "नमस्ते",
+        "NBest": [{
+            "PronunciationAssessment": {"AccuracyScore": 93},
+            "Words": [{"Word": "नमस्ते", "PronunciationAssessment": {"AccuracyScore": 60, "ErrorType": "Mispronunciation"}}],
+        }],
+    }
+    result = azure_speech.read_azure_answer(answer)
+    assert result["accuracy"] == 93
+    assert result["weak_words"] == ["नमस्ते"]
+
+
+def test_azure_heard_nothing():
+    result = azure_speech.read_azure_answer({"RecognitionStatus": "NoMatch"})
+    assert result == {"heard": "", "accuracy": 0, "weak_words": []}
+
+
+def test_azure_request_has_the_hindi_reference(monkeypatch, tmp_path):
+    import base64
+    sent = {}
+
+    class FakeResponse:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self): return json.dumps(azure_answer(93, [])).encode()
+
+    def fake_urlopen(request, timeout):
+        sent["url"] = request.full_url
+        sent["headers"] = dict(request.header_items())
+        return FakeResponse()
+
+    monkeypatch.setattr(azure_speech.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(azure_speech, "AZURE_SPEECH_KEY", "test-key")
+    wav = tmp_path / "recording.wav"
+    wav.write_bytes(b"RIFF")
+
+    result = azure_speech.check_pronunciation(str(wav), "नमस्ते जी")
+
+    assert result["accuracy"] == 93
+    assert sent["url"].startswith("https://westus3.stt.speech.microsoft.com/")
+    assert "language=hi-IN" in sent["url"]
+    settings = json.loads(base64.b64decode(sent["headers"]["Pronunciation-assessment"]))
+    assert settings["ReferenceText"] == "नमस्ते जी"
+
+
+def run_with_azure(monkeypatch, accuracy, heard="namaste ji", weak_words=()):
+    client = fake_client(
+        {"romanized": heard},
+        {"overall": "Nice!", "went_well": [], "tips": [], "focus_sounds": [], "better_example": "namaste ji"},
+    )
+    monkeypatch.setattr(pronunciation, "client", client)
+    monkeypatch.setattr(pronunciation, "check_pronunciation", lambda path, reference: {
+        "heard": "नमस्ते जी", "accuracy": accuracy, "weak_words": list(weak_words),
+    })
+    result = pronunciation.pronunciation_feedback("a.wav", "namaste ji", "नमस्ते जी")
+    prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    return result, prompt
+
+
+def test_natural_accent_sounds_natural(monkeypatch):
+    # Rhea's natural "namaste ji" got 90 and 93
+    result, prompt = run_with_azure(monkeypatch, 93)
+    assert result["result_level"] == "sounds natural"
+    assert result["accent_checked"] is True
+    assert pronunciation.feedback_heading(result) == "Every word came through, and it sounds natural"
+    assert "natural, like a Hindi speaker" in prompt
+
+
+def test_american_accent_gets_polish_the_sounds(monkeypatch):
+    # Rhea's American-accent "namaste ji" got 74 and 76
+    result, prompt = run_with_azure(monkeypatch, 76, weak_words=["नमस्ते"])
+    assert result["result_level"] == "polish the sounds"
+    assert "polish the sounds" in pronunciation.feedback_heading(result)
+    assert "probably an English accent" in prompt
+    assert "नमस्ते" in prompt
+    assert "not how they sounded" not in prompt      # the words-only rules are gone
+
+
+def test_wrong_words_come_first_even_with_azure(monkeypatch):
+    result, _ = run_with_azure(monkeypatch, 95, heard="kya haal hai")
+    assert result["result_level"] == "keep practicing"
+
+
+def test_nothing_heard_skips_romanizing(monkeypatch):
+    client = fake_client({"overall": "x", "went_well": [], "tips": [], "focus_sounds": [], "better_example": "namaste ji"})
+    monkeypatch.setattr(pronunciation, "client", client)
+    monkeypatch.setattr(pronunciation, "check_pronunciation", lambda path, reference: {"heard": "", "accuracy": 0, "weak_words": []})
+    result = pronunciation.pronunciation_feedback("a.wav", "namaste ji", "नमस्ते जी")
+    assert result["result_level"] == "keep practicing"
+    assert client.chat.completions.create.call_count == 1

@@ -14,8 +14,9 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from config import TALKING_TO, MAX_TEXT_LENGTH, MAX_CONVERSATION_TURNS
 from translate import desiunmute_translate
-from pronunciation import pronunciation_feedback, phrase_to_devanagari, saved_devanagari, PRACTICE_PHRASES
+from pronunciation import pronunciation_feedback, feedback_heading, phrase_to_devanagari, saved_devanagari, PRACTICE_PHRASES
 from audio import make_audio
+from azure_speech import azure_is_set_up
 from conversation import SCENARIOS, SCENARIO_INTROS, start_conversation, conversation_practice, how_do_i_say, conversation_summary
 from lessons import UNITS, get_unit, check_answers, personalize_lesson, ask_tutor
 
@@ -45,8 +46,8 @@ INVITE_CODE = os.getenv("INVITE_CODE", "namaste")
 # We count every call to OpenAI, not every click, because one click can make
 # up to 3 calls (for example: listen to you + write a reply + speak it).
 #   text   = gpt-6-luna (cheapest)
-#   voice  = gpt-4o-mini-tts (most expensive, so it gets its own cap)
-#   listen = gpt-4o-transcribe (also its own cap)
+#   voice  = gpt-realtime-2.1-mini (most expensive, so it gets its own cap)
+#   listen = gpt-4o-transcribe, or Azure for the Pronunciation Coach (also its own cap)
 # Change any of these on Render (Environment) without touching the code.
 DAILY_LIMIT_PER_PERSON = int(os.getenv("DAILY_LIMIT_PER_PERSON", "90"))   # all calls, one tester
 DAILY_LIMIT_TOTAL = int(os.getenv("DAILY_LIMIT_TOTAL", "600"))            # all calls, everyone
@@ -283,7 +284,7 @@ def pronunciation_page(request: Request, phrase: str = ""):
     return templates.TemplateResponse(
         request,
         "pronunciation.html",
-        {"phrase": phrase, "practice_phrases": PRACTICE_PHRASES},
+        {"phrase": phrase, "practice_phrases": PRACTICE_PHRASES, "accent_check": azure_is_set_up()},
     )
 
 
@@ -340,14 +341,29 @@ def pronunciation_result(
         return show_error(request, error)
 
     try:
-        count_ai_use(request, "pronunciation feedback", text=2, listen=1)
-        result = pronunciation_feedback(audio_path, target_phrase)
+        # Azure checks the accent too. It needs the phrase in Devanagari and a
+        # WAV recording (the browser makes one; if that ever fails, we just
+        # check the words with OpenAI like before).
+        if azure_is_set_up() and audio_path.endswith(".wav"):
+            saved = saved_devanagari(target_phrase)
+            # romanize + coach, plus writing a typed phrase in Devanagari
+            text_calls = 2 if saved else 3
+            count_ai_use(request, "pronunciation feedback (Azure)", text=text_calls, listen=1)
+            reference = saved or phrase_to_devanagari(target_phrase)
+            result = pronunciation_feedback(audio_path, target_phrase, reference)
+        else:
+            count_ai_use(request, "pronunciation feedback", text=2, listen=1)
+            result = pronunciation_feedback(audio_path, target_phrase)
     except Exception as error:
         return show_error(request, error)
     finally:
         os.remove(audio_path)
 
-    return templates.TemplateResponse(request, "partials/pronunciation_result.html", {"result": result})
+    return templates.TemplateResponse(
+        request,
+        "partials/pronunciation_result.html",
+        {"result": result, "heading": feedback_heading(result)},
+    )
 
 
 # Heritage Gaps: list of units

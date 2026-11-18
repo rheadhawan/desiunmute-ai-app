@@ -47,10 +47,12 @@ const CONNECTION_ERROR =
 // RECORDER
 // Turns a button into a record/stop button. When a recording finishes,
 // it calls onRecorded(recording, fileName).
+// rawSound turns off the browser's noise and echo cleanup, which changes how
+// a voice sounds. The Pronunciation Coach needs the real sound to judge accents.
 
 const MAX_SECONDS = 15;
 
-function makeRecorder(button, status, labels, onRecorded) {
+function makeRecorder(button, status, labels, onRecorded, rawSound = false) {
   let recorder = null;
   let chunks = [];
   let stopTimer = null;
@@ -65,7 +67,10 @@ function makeRecorder(button, status, labels, onRecorded) {
     // 2. Ask for the microphone
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audio = rawSound
+        ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        : true;
+      stream = await navigator.mediaDevices.getUserMedia({ audio: audio });
     } catch (error) {
       status.textContent =
         "We couldn't use your microphone. Click the icon next to the web address, allow the microphone, then reload the page.";
@@ -102,6 +107,65 @@ function makeRecorder(button, status, labels, onRecorded) {
 }
 
 
+// WAV CONVERSION
+// Azure (the accent checker) needs plain WAV audio: 16,000 samples a second,
+// one channel. Browsers record in other formats, so the coach converts first.
+
+const WAV_RATE = 16000;
+
+async function toWav(recording) {
+  // 1. Decode the browser's recording into raw sound
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  const context = new AudioContextClass();
+  const decoded = await context.decodeAudioData(await recording.arrayBuffer());
+  context.close();
+
+  // 2. Resample it to 16 kHz mono
+  const length = Math.ceil(decoded.duration * WAV_RATE);
+  const offline = new OfflineAudioContext(1, length, WAV_RATE);
+  const source = offline.createBufferSource();
+  source.buffer = decoded;
+  source.connect(offline.destination);
+  source.start();
+  const resampled = await offline.startRendering();
+
+  // 3. Wrap it in a WAV file
+  return new Blob([encodeWav(resampled.getChannelData(0))], { type: "audio/wav" });
+}
+
+// Turns sound samples (numbers from -1 to 1) into a 16-bit WAV file
+function encodeWav(samples) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  function writeText(offset, text) {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+  }
+
+  // The 44-byte header that says "this is 16 kHz, mono, 16-bit audio"
+  writeText(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeText(8, "WAVE");
+  writeText(12, "fmt ");
+  view.setUint32(16, 16, true);            // header section size
+  view.setUint16(20, 1, true);             // plain PCM
+  view.setUint16(22, 1, true);             // mono
+  view.setUint32(24, WAV_RATE, true);
+  view.setUint32(28, WAV_RATE * 2, true);  // bytes per second
+  view.setUint16(32, 2, true);             // bytes per sample
+  view.setUint16(34, 16, true);            // bits per sample
+  writeText(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+
+  // The sound itself
+  for (let i = 0; i < samples.length; i++) {
+    const sample = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(44 + i * 2, sample * 0x7fff, true);
+  }
+  return buffer;
+}
+
+
 // PRONUNCIATION COACH PAGE
 
 const recordButton = document.getElementById("record-button");
@@ -128,18 +192,30 @@ if (recordButton) {
       myRecording.hidden = false;
       feedbackButton.disabled = false;
       recordStatus.textContent = "Listen back if you like, then click Get feedback.";
-    }
+    },
+    true   // raw sound, so the accent check hears your real voice
   );
 
   feedbackButton.addEventListener("click", async function () {
     if (!lastRecording) return;
 
-    const form = new FormData();
-    form.append("target_phrase", document.getElementById("target_phrase").value);
-    form.append("recording", lastRecording, lastFileName);
-
     feedbackButton.disabled = true;
     feedbackLoading.style.display = "block";
+
+    // Send WAV for the accent check. If converting fails, send the original
+    // recording and the server checks the words only.
+    let audio = lastRecording;
+    let fileName = lastFileName;
+    try {
+      audio = await toWav(lastRecording);
+      fileName = "recording.wav";
+    } catch (error) {
+      console.log("Couldn't convert to WAV, sending the original:", error);
+    }
+
+    const form = new FormData();
+    form.append("target_phrase", document.getElementById("target_phrase").value);
+    form.append("recording", audio, fileName);
 
     try {
       const response = await sendForm("/pronunciation/feedback", form);

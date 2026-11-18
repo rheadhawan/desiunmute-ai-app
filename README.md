@@ -8,7 +8,7 @@ AI-powered Hindi learning for Indian heritage learners, built with Python, FastA
 
 - Translates English into natural, conversational Hindi (romanized), with a word breakdown, alternatives, and common mistakes
 - Hindi audio for every translation
-- Pronunciation coach: record yourself and get friendly feedback in simple English
+- Pronunciation coach: record yourself and get friendly feedback in simple English, including how natural your accent sounds (Microsoft Azure)
 - Conversation practice with AI characters (like a phone call with Nani), with spoken replies and an end-of-conversation summary
 - Respect levels: talking to a friend, an elder, or a child
 
@@ -19,7 +19,8 @@ The website has Translate, the Pronunciation Coach, Heritage Gaps (Units 1 and 2
 - Python
 - FastAPI (website), Jinja templates and HTMX (pages)
 - OpenAI API (text, text-to-speech, and speech-to-text)
-- jiwer (pronunciation scoring)
+- Microsoft Azure Pronunciation Assessment (accent check, Hindi)
+- jiwer (checking the words)
 - pytest
 - Gradio (the original beta app, kept for local testing)
 
@@ -39,6 +40,7 @@ User input → processed through the OpenAI API → translation, audio, and feed
 | `audio.py` | Text-to-speech (Hindi voice) and speech-to-text. |
 | `translate.py` | English → natural romanized Hindi, with breakdown and audio. |
 | `pronunciation.py` | Scores your recording and gives coaching feedback. |
+| `azure_speech.py` | Sends a recording to Azure to check the accent. |
 | `lessons.py` | Heritage Gaps lessons (the reviewed content), plus the AI for family examples and the tutor. |
 | `conversation.py` | Conversation characters, "How do I say...?", and the end summary. |
 | `try_models.py` | Compares AI models side by side on the same Hindi task. |
@@ -64,10 +66,12 @@ Set these in Render → your service → Environment. Never put them in the code
 | `OPENAI_API_KEY` | A separate OpenAI key just for the live site |
 | `INVITE_CODE` | The private code testers type to get in |
 | `SECRET_KEY` | A long random string that protects logins |
+| `AZURE_SPEECH_KEY` | KEY 1 from Azure (Keys and Endpoint). Turns on the accent check |
+| `AZURE_SPEECH_REGION` | The region on that same page (`westus3`) |
 | `DAILY_LIMIT_PER_PERSON` | Optional. OpenAI calls per tester per day (default 90) |
 | `DAILY_LIMIT_TOTAL` | Optional. OpenAI calls for everyone per day (default 600) |
 | `DAILY_LIMIT_VOICE` | Optional. Voice (text-to-speech) calls per day (default 250) |
-| `DAILY_LIMIT_LISTEN` | Optional. Listening (speech-to-text) calls per day (default 250) |
+| `DAILY_LIMIT_LISTEN` | Optional. Listening calls per day, OpenAI and Azure together (default 250) |
 
 Limits count OpenAI calls (one click can make up to 3) and reset at midnight Pacific.
 They're kept in memory, so they also reset when Render restarts. Keep OpenAI's

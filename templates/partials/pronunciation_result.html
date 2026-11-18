@@ -1,20 +1,19 @@
 <!-- The feedback that appears after the learner records.
-     It checks WORDS, not ACCENT (an AI test on 2026-11-17 showed the
-     listening model can't tell a native accent from an American one),
-     so the headings only talk about words. -->
-{% set headings = {
-  "sounds natural": "Every word came through",
-  "close": "Almost! A word or two was different",
-  "keep practicing": "Let's try that again",
-} %}
+     With Azure set up, it checks the words AND the accent.
+     Without it, OpenAI only checks the words (it can't hear accents,
+     tested 2026-11-17), so the note says so. -->
 
 <article class="card result feedback level-{{ result.result_level | replace(' ', '-') }}">
-  <h2>{{ headings[result.result_level] }}</h2>
+  <h2>{{ heading }}</h2>
   <p>{{ result.overall }}</p>
 
   <p class="heard"><span class="label">We heard</span><br><strong>{{ result.heard }}</strong></p>
 
+  {% if result.accent_checked %}
+  <p class="accent-note">🎧 This checks your words and your accent. It's new, so trust your ears too: play the Hindi audio, then your recording.</p>
+  {% else %}
   <p class="accent-note">🎧 This checks your words, not your accent. To check your accent, play the Hindi audio, then your recording, and listen for the difference.</p>
+  {% endif %}
 
   {% if result.went_well %}
   <details open>

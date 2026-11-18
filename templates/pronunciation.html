@@ -5,7 +5,11 @@
 {% block content %}
 <section class="page-intro">
   <h1>Pronunciation Coach</h1>
+  {% if accent_check %}
+  <p class="lead">Pick a phrase, listen to it, then say it yourself. We'll check that every word came through and how natural your accent sounds.</p>
+  {% else %}
   <p class="lead">Pick a phrase, listen to it, then say it yourself. We'll check that every word came through, and you can compare your accent with the Hindi audio.</p>
+  {% endif %}
 </section>
 
 <!-- 1. Choose the phrase -->
@@ -49,10 +53,10 @@
 
   <button type="button" id="feedback-button" disabled>Get feedback</button>
   <p id="feedback-loading" class="loading">Listening to you… this takes a few seconds.</p>
-  <p class="hint">Your recording is sent to OpenAI to check your pronunciation, then deleted. We never keep it.</p>
+  <p class="hint">Your recording is sent to {% if accent_check %}Microsoft Azure{% else %}OpenAI{% endif %} to check your pronunciation, then deleted. We never keep it.</p>
 </section>
 
 <div id="result" aria-live="polite"></div>
 
-<script src="/static/desiunmute.js?v=6"></script>
+<script src="/static/desiunmute.js?v=8"></script>
 {% endblock %}
