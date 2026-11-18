@@ -288,6 +288,8 @@ button.record.is-recording { background: var(--error); color: #fff; }
 .feedback.level-sounds-natural { border-left: 5px solid #3c8a5a; }
 .feedback.level-close { border-left: 5px solid var(--marigold); }
 .feedback.level-keep-practicing { border-left: 5px solid var(--plum); }
+.feedback.level-polish-the-sounds { border-left: 5px solid var(--marigold); }
+.feedback.level-nothing-heard { border-left: 5px solid var(--plum); }
 .heard, .say-it { margin: 12px 0; }
 
 .accent-note {

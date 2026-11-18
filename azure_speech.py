@@ -27,6 +27,19 @@ NATURAL_ACCURACY = 85
 # A single word below this is worth listening to again
 WEAK_WORD_ACCURACY = 80
 
+# A part of a word ("na") is only pointed out when it's below this AND clearly
+# lower than the word's other parts. In Rhea's American "ney-meh-ste" in
+# Speech Studio, the parts scored na 9, mas 38, te 57: "na" clearly stood out.
+# In another recording Azure lost track (85 0 0 0 0 0 0): nothing stood out,
+# so the coach only names the word.
+WEAK_SOUND_ACCURACY = 60
+PART_GAP = 20
+
+# Completeness is logged but NOT used: it also drops when a word is said
+# badly (Rhea's American "aap kaisi hain", every word said: completeness 67),
+# so it can't tell a missing word from an accent. Words Azure flags as
+# missing ("Omission") are used instead.
+
 
 def azure_is_set_up():
     return bool(AZURE_SPEECH_KEY)
@@ -40,7 +53,7 @@ def check_pronunciation(wav_path, reference):
     settings = {
         "ReferenceText": reference,
         "GradingSystem": "HundredMark",
-        "Granularity": "Word",
+        "Granularity": "Phoneme",   # scores every sound, not just every word
         "Dimension": "Comprehensive",
         "EnableMiscue": True,   # notices missing or extra words
     }
@@ -68,8 +81,11 @@ def check_pronunciation(wav_path, reference):
 
     result = read_azure_answer(answer)
 
-    # Shows up in Terminal / Render's Logs, to tune NATURAL_ACCURACY
-    print(f"Azure: accuracy {result['accuracy']}, weak words: {result['weak_words'] or 'none'}")
+    # Shows up in Terminal / Render's Logs, to check the feedback against
+    # what Azure measured and to tune NATURAL_ACCURACY
+    words = " | ".join(f"{w['word']} {w['accuracy']} {w['sounds']}" for w in result["words"])
+    missing = f" | not heard: {', '.join(result['missing'])}" if result["missing"] else ""
+    print(f"Azure: accuracy {result['accuracy']}, completeness {result['completeness']} | {words or 'no words'}{missing}")
     return result
 
 
@@ -78,27 +94,49 @@ def check_pronunciation(wav_path, reference):
 def read_azure_answer(answer):
     # Silence or noise: nothing was heard
     if answer.get("RecognitionStatus") != "Success" or not answer.get("NBest"):
-        return {"heard": "", "accuracy": 0, "weak_words": []}
+        return {"heard": "", "accuracy": 0, "completeness": 0, "words": [], "missing": []}
 
     best = answer["NBest"][0]
     # Depending on the version, the scores are either right on "best"
     # or inside "PronunciationAssessment"
     scores = best.get("PronunciationAssessment", best)
 
-    weak_words = []
+    words = []
+    missing = []
     for word in best.get("Words", []):
         word_scores = word.get("PronunciationAssessment", word)
         error_type = word_scores.get("ErrorType", "None")
         accuracy = word_scores.get("AccuracyScore", 100)
 
-        # Missing and extra words are caught by the word check instead
-        if error_type in ("Omission", "Insertion"):
+        # Words Azure couldn't find. That can mean the learner skipped them, or
+        # said them so differently they weren't recognized (Rhea's American
+        # "aap" in "aap kaisi hain", 2026-11-18). We can't tell which.
+        if error_type == "Omission":
+            missing.append(word["Word"])
             continue
-        if error_type == "Mispronunciation" or accuracy < WEAK_WORD_ACCURACY:
-            weak_words.append(word["Word"])
+        # Extra words are caught by the word check instead
+        if error_type == "Insertion":
+            continue
+
+        # One score per sound, in order. For Hindi, Azure doesn't say which
+        # sound is which, so sounds.py works that out.
+        sounds = []
+        for sound in word.get("Phonemes", []):
+            sound_scores = sound.get("PronunciationAssessment", sound)
+            sounds.append(sound_scores.get("AccuracyScore", 100))
+
+        words.append({
+            "word": word["Word"],
+            "accuracy": accuracy,
+            "weak": error_type == "Mispronunciation" or accuracy < WEAK_WORD_ACCURACY,
+            "sounds": sounds,
+        })
 
     return {
         "heard": answer.get("DisplayText") or best.get("Display", ""),
         "accuracy": scores.get("AccuracyScore", 0),
-        "weak_words": weak_words,
+        # How much of the phrase was said (100 = all of it)
+        "completeness": scores.get("CompletenessScore", 100),
+        "words": words,
+        "missing": missing,
     }

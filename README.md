@@ -41,6 +41,7 @@ User input → processed through the OpenAI API → translation, audio, and feed
 | `translate.py` | English → natural romanized Hindi, with breakdown and audio. |
 | `pronunciation.py` | Scores your recording and gives coaching feedback. |
 | `azure_speech.py` | Sends a recording to Azure to check the accent. |
+| `sounds.py` | Splits Hindi words into sounds and explains how to say each one (the sound guide, a draft for native-speaker review). |
 | `lessons.py` | Heritage Gaps lessons (the reviewed content), plus the AI for family examples and the tutor. |
 | `conversation.py` | Conversation characters, "How do I say...?", and the end summary. |
 | `try_models.py` | Compares AI models side by side on the same Hindi task. |

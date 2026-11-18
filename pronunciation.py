@@ -3,7 +3,8 @@ import re
 import jiwer
 from config import client, TEXT_MODEL, NATURAL_HINDI_RULES, MAX_TEXT_LENGTH
 from audio import transcribe_audio
-from azure_speech import check_pronunciation, NATURAL_ACCURACY
+from azure_speech import check_pronunciation, NATURAL_ACCURACY, WEAK_SOUND_ACCURACY, PART_GAP
+from sounds import SOUND_GUIDE, ROMAN, split_sounds, word_parts, romanize_part
 from lessons import all_lesson_phrases
 
 # Romanized Hindi has no single correct spelling (kaise / kese / kayse),
@@ -84,28 +85,137 @@ WORDS_ONLY_RULES = """
 """
 
 
-def accent_rules(accent):
+# Matches each Devanagari word to the learner's romanized word
+# (नमस्ते -> namaste), so tips use the learner's own spelling.
+
+def romanized_words(reference, target_phrase):
+    hindi = re.findall(r"[\u0900-\u0963\u0966-\u097F]+", reference)
+    roman = re.findall(r"[A-Za-z]+", target_phrase)
+    if len(hindi) != len(roman):
+        return {}
+    return dict(zip(hindi, roman))
+
+
+# Finds the part of a word that clearly sounded the least natural, using
+# Azure's score for each sound. Returns the part's sound numbers, or None
+# when the scores don't line up or no part clearly stands out (then we
+# don't guess).
+
+def weakest_part(sounds, parts, scores):
+    if not scores or len(scores) != len(sounds) or len(parts) < 2:
+        return None
+
+    averages = sorted((sum(scores[n] for n in part) / len(part), number) for number, part in enumerate(parts))
+    lowest, next_lowest = averages[0][0], averages[1][0]
+
+    if lowest < WEAK_SOUND_ACCURACY and next_lowest - lowest >= PART_GAP:
+        return parts[averages[0][1]]
+    return None
+
+
+# Pronunciation tips built ONLY from what Azure measured.
+# The tips come from here, not from Luna, so they can't be guessed.
+# Returns (tips, focus_sounds, what_stood_out) where what_stood_out is a
+# short note for Luna's summary sentence.
+
+def sound_tips(accent, reference, target_phrase):
+    if accent["accuracy"] >= NATURAL_ACCURACY:
+        return [], [], "nothing, it sounded natural"
+
+    names = romanized_words(reference, target_phrase)
+
+    # 1. Work out what Azure's scores show for each weak word
+    findings = []
+    for word in accent["words"]:
+        if not word["weak"]:
+            continue
+        sounds = split_sounds(word["word"])
+        parts = word_parts(sounds)
+        name = names.get(word["word"]) or "".join(romanize_part(sounds, p) for p in parts)
+        part = weakest_part(sounds, parts, word["sounds"])
+
+        if part:
+            part_scores = [word["sounds"][n] for n in part]
+            findings.append({
+                "name": name, "sounds": sounds, "scores": word["sounds"], "part": part,
+                "severity": sum(part_scores) / len(part_scores),
+            })
+        else:
+            findings.append({"name": name, "part": None, "severity": word["accuracy"]})
+
+    # 2. The biggest problem first, and at most two at a time
+    findings.sort(key=lambda finding: finding["severity"])
+    tips = []
+    focus = []
+    practice = []
+
+    for finding in findings[:2]:
+        name = finding["name"]
+
+        if finding["part"]:
+            sounds, part = finding["sounds"], finding["part"]
+            part_text = romanize_part(sounds, part)
+            where = f'the "{part_text}" in \'{name}\''
+
+            # Explain the lowest sound in that part, if the guide has something useful
+            lowest = min(part, key=lambda n: finding["scores"][n])
+            letter = sounds[lowest]["letter"]
+            if letter in SOUND_GUIDE:
+                tips.append(f'Focus on {where}. The "{ROMAN[letter]}" there is {SOUND_GUIDE[letter]}')
+            else:
+                tips.append(f"Focus on {where}. Listen to how the Hindi audio says it and copy it.")
+            focus.append(where)
+            practice.append(f'"{part_text}"')
+        else:
+            # Azure only told us the word, so that's all we say
+            tips.append(f"'{name}' sounded the least natural. Listen to how the Hindi audio says it and copy it.")
+            focus.append(f"'{name}'")
+            practice.append(f"'{name}'")
+
+    if practice:
+        on_own = "on its own" if len(practice) == 1 else "on their own"
+        tips.append(f"Play the Slow audio, say {' and '.join(practice)} {on_own} a few times, then the whole phrase.")
+    else:
+        # Sounded less natural overall, but no single word stood out
+        tips.append("Play the Slow audio and copy it closely, sound by sound, then say the whole phrase again.")
+
+    what_stood_out = ", ".join(focus) or "no single word or sound, just the overall sound"
+    return tips, focus, what_stood_out
+
+
+# not_heard lists the words Azure couldn't find (empty when it found them all)
+
+def accent_rules(accent, what_stood_out, not_heard):
+    if not_heard:
+        which = ", ".join(f"'{word}'" for word in not_heard)
+        return f"""
+A speech checker listened to the SOUNDS (you can't hear the recording yourself):
+- It couldn't clearly hear: {which}, even if the words above look complete.
+- Your "overall" sentence should gently say that. Say "we couldn't clearly hear",
+  never "you didn't say": the word may have been said very differently.
+- Do NOT write any tips about sounds or accent. Leave tips and focus_sounds empty.
+- Never mention numbers or scores.
+"""
+
     if accent["accuracy"] >= NATURAL_ACCURACY:
         how_it_sounded = "natural, like a Hindi speaker"
     else:
-        how_it_sounded = "less natural, probably an English accent"
-
-    weak_words = ", ".join(accent["weak_words"]) or "none in particular"
+        how_it_sounded = "a little less natural than a native speaker"
 
     return f"""
 A speech checker listened to the SOUNDS (you can't hear the recording yourself):
 - Overall it sounded: {how_it_sounded}
-- Words that sounded least natural (in Devanagari): {weak_words}
+- What stood out: {what_stood_out}
 
-- Only repeat what the checker found. Never invent problems or praise.
+- The app adds the pronunciation tips itself. Do NOT write any tips about
+  sounds, accent, vowels, the tongue or the mouth. Leave focus_sounds empty.
+- Your "overall" sentence may mention what stood out, in those exact words.
+  Never mention any other sound or word as a problem.
 - If it sounded natural, say so warmly and don't invent refinements.
-- If it sounded less natural, name the words to listen to again (in romanized
-  Hindi, never Devanagari) and give 1-2 gentle tips that commonly help English
-  speakers with those words (for example: soft "t" and "d" with the tongue
-  touching the teeth, short clear vowels, no English "r" sound). Say "try",
-  because you can't know exactly which sound was off.
+- An accent isn't a mistake: say "less natural" or "more like a native speaker", never "wrong".
+- If it sounded less natural, don't say "every word came through": the checker
+  sometimes fills in a word it expected, so we can't be sure.
 - Never mention numbers or scores.
-- focus_sounds: only sounds in those words, else leave it empty.
 """
 
 
@@ -145,13 +255,38 @@ def pronunciation_feedback(user_audio, target_phrase, reference=None):
     if target_clean == "":
         raise ValueError("Please type the phrase in romanized Hindi (for example: aap kaise ho).")
 
+    # Nothing was recognized: too quiet, cut off, or so different from Hindi
+    # that no word came through. We can't tell which, so we don't guess
+    # (and there's nothing for Luna to comment on).
     if heard_clean == "":
-        error_rate = 1.0
-    else:
-        error_rate = min(jiwer.wer(target_clean, heard_clean), 1.0)
+        return {
+            "overall": "We couldn't make out any words this time.",
+            "went_well": [],
+            "tips": [
+                "Stay close to your microphone and speak at a normal volume.",
+                "Play the Hindi audio first, then copy how it sounds as closely as you can.",
+            ],
+            "focus_sounds": [],
+            "better_example": target_phrase,
+            "heard": "",
+            "result_level": "nothing heard",
+            "accent_checked": accent is not None,
+            "accuracy": 0.0,
+        }
+
+    error_rate = min(jiwer.wer(target_clean, heard_clean), 1.0)
+
+    # Words Azure couldn't find (skipped, or said too differently to recognize)
+    not_heard = []
+    if accent is not None:
+        names = romanized_words(reference, target_phrase)
+        not_heard = [names.get(word, word) for word in accent["missing"]]
+    part_missing = bool(not_heard)
 
     # 4. PICK A RESULT (internal score stays the same every time)
-    if error_rate <= 0.15 and accent and accent["accuracy"] < NATURAL_ACCURACY:
+    if error_rate <= 0.15 and part_missing:
+        result_level = "close"
+    elif error_rate <= 0.15 and accent and accent["accuracy"] < NATURAL_ACCURACY:
         result_level = "polish the sounds"   # right words, English-sounding accent
     elif error_rate <= 0.15:
         result_level = "sounds natural"
@@ -164,7 +299,8 @@ def pronunciation_feedback(user_audio, target_phrase, reference=None):
     if accent is None:
         sound_rules = WORDS_ONLY_RULES
     else:
-        sound_rules = accent_rules(accent)
+        accent_tips, accent_focus, what_stood_out = sound_tips(accent, reference, target_phrase)
+        sound_rules = accent_rules(accent, what_stood_out, not_heard)
 
     feedback_prompt = f"""
 You are a warm, encouraging Hindi pronunciation coach for Indian heritage learners.
@@ -176,6 +312,8 @@ Overall result: {result_level}
 IMPORTANT RULES:
 - ONLY comment on REAL differences visible in the transcription. DO NOT invent issues.
 - If words came out differently, start with those.
+- tips: only about words that came out differently, else leave it empty.
+- If every word came through and the result is "sounds natural", went_well must say so.
 - Treat all dialects as valid Hindi. Natural shortening (nai for nahi) is fine.
 {sound_rules}
 - Sound like a kind tutor, not a game. No scores, points, or grades.
@@ -187,7 +325,7 @@ Reply ONLY with JSON in this exact format:
 {{
   "overall": "one short, honest, encouraging sentence",
   "went_well": ["something specific they got right", "..."],
-  "tips": ["0-3 specific differences and how to fix them", "..."],
+  "tips": ["see the tips rule above", "..."],
   "focus_sounds": ["see the focus_sounds rule above"],
   "better_example": "the target phrase, romanized"
 }}
@@ -203,6 +341,22 @@ Reply ONLY with JSON in this exact format:
     result["heard"] = heard
     result["result_level"] = result_level
     result["accent_checked"] = accent is not None
+
+    # With Azure, sound tips come from its measurements, never from Luna.
+    # If words came out differently, those come first, so no sound tips yet.
+    if accent is not None:
+        if part_missing and error_rate <= 0.15:
+            result["tips"] = [
+                f"We couldn't clearly hear '{word}'. Make sure you say it, and copy how the Hindi audio says it."
+                for word in not_heard[:2]
+            ]
+            result["tips"].append("Play the Hindi audio, then try the whole phrase again.")
+            result["focus_sounds"] = [f"'{word}'" for word in not_heard[:2]]
+        elif error_rate <= 0.15:
+            result["tips"] = accent_tips
+            result["focus_sounds"] = accent_focus
+        else:
+            result["focus_sounds"] = []
     result["accuracy"] = round(1 - error_rate, 2)   # saved for progress tracking later, not shown
     return result
 
@@ -215,9 +369,11 @@ def feedback_heading(result):
 
     headings = {
         "sounds natural": "Every word came through",
-        "polish the sounds": "Every word came through. Now let's polish the sounds",
+        # Not "every word came through": Azure sometimes fills in a word it expected
+        "polish the sounds": "Now let's polish the sounds",
         "close": "Almost! A word or two was different",
         "keep practicing": "Let's try that again",
+        "nothing heard": "We couldn't hear that clearly",
     }
     return headings[result["result_level"]]
 

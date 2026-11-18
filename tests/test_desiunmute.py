@@ -317,6 +317,11 @@ def test_coach_is_told_it_cannot_hear_accents(monkeypatch):
 
 # Azure accent check
 
+# Rhea's American "ney-meh-ste ji" in Speech Studio (2026-11-18):
+# नमस्ते scored 41, its 7 sounds (n a m a s t e) scored 18 0 14 52 48 75 38
+AMERICAN_NAMASTE = [18, 0, 14, 52, 48, 75, 38]
+
+
 def azure_answer(accuracy, words):
     return {
         "RecognitionStatus": "Success",
@@ -324,15 +329,28 @@ def azure_answer(accuracy, words):
         "NBest": [{
             "Display": "नमस्ते जी।",
             "AccuracyScore": accuracy,
-            "Words": [{"Word": w, "AccuracyScore": a, "ErrorType": e} for w, a, e in words],
+            "Words": [
+                {"Word": w, "AccuracyScore": a, "ErrorType": e, "Phonemes": [{"Phoneme": "", "AccuracyScore": n} for n in sounds]}
+                for w, a, e, sounds in words
+            ],
         }],
     }
 
 
-def test_azure_answer_finds_weak_words():
-    answer = azure_answer(76, [("नमस्ते", 70, "None"), ("जी", 95, "None"), ("आप", 0, "Omission")])
+def test_azure_answer_keeps_word_and_sound_scores():
+    answer = azure_answer(55, [
+        ("नमस्ते", 41, "Mispronunciation", AMERICAN_NAMASTE),
+        ("जी", 95, "None", [96, 94]),
+        ("आप", 0, "Omission", []),
+    ])
     result = azure_speech.read_azure_answer(answer)
-    assert result == {"heard": "नमस्ते जी।", "accuracy": 76, "weak_words": ["नमस्ते"]}
+    assert result["heard"] == "नमस्ते जी।"
+    assert result["accuracy"] == 55
+    assert result["missing"] == ["आप"]
+    assert result["words"] == [
+        {"word": "नमस्ते", "accuracy": 41, "weak": True, "sounds": AMERICAN_NAMASTE},
+        {"word": "जी", "accuracy": 95, "weak": False, "sounds": [96, 94]},
+    ]
 
 
 def test_azure_answer_with_scores_inside_pronunciation_assessment():
@@ -341,20 +359,25 @@ def test_azure_answer_with_scores_inside_pronunciation_assessment():
         "DisplayText": "नमस्ते",
         "NBest": [{
             "PronunciationAssessment": {"AccuracyScore": 93},
-            "Words": [{"Word": "नमस्ते", "PronunciationAssessment": {"AccuracyScore": 60, "ErrorType": "Mispronunciation"}}],
+            "Words": [{
+                "Word": "नमस्ते",
+                "PronunciationAssessment": {"AccuracyScore": 70, "ErrorType": "None"},
+                "Phonemes": [{"Phoneme": "", "PronunciationAssessment": {"AccuracyScore": 60}}],
+            }],
         }],
     }
     result = azure_speech.read_azure_answer(answer)
     assert result["accuracy"] == 93
-    assert result["weak_words"] == ["नमस्ते"]
+    assert result["words"][0]["weak"] is True
+    assert result["words"][0]["sounds"] == [60]
 
 
 def test_azure_heard_nothing():
     result = azure_speech.read_azure_answer({"RecognitionStatus": "NoMatch"})
-    assert result == {"heard": "", "accuracy": 0, "weak_words": []}
+    assert result == {"heard": "", "accuracy": 0, "completeness": 0, "words": [], "missing": []}
 
 
-def test_azure_request_has_the_hindi_reference(monkeypatch, tmp_path):
+def test_azure_request_asks_for_sound_scores(monkeypatch, tmp_path):
     import base64
     sent = {}
 
@@ -380,16 +403,48 @@ def test_azure_request_has_the_hindi_reference(monkeypatch, tmp_path):
     assert "language=hi-IN" in sent["url"]
     settings = json.loads(base64.b64decode(sent["headers"]["Pronunciation-assessment"]))
     assert settings["ReferenceText"] == "नमस्ते जी"
+    assert settings["Granularity"] == "Phoneme"
 
 
-def run_with_azure(monkeypatch, accuracy, heard="namaste ji", weak_words=()):
+# Splitting words into sounds (must match how Azure counts them)
+
+def test_namaste_has_the_same_7_sounds_as_azure():
+    import sounds
+    split = sounds.split_sounds("नमस्ते")
+    assert [s["letter"] for s in split] == ["न", "अ", "म", "अ", "स", "त", "ए"]
+    parts = sounds.word_parts(split)
+    assert [sounds.romanize_part(split, p) for p in parts] == ["na", "mas", "te"]
+
+
+@pytest.mark.parametrize("word, spoken", [
+    ("आप", "aap"),           # no "a" at the end
+    ("बोलना", "bol·naa"),    # no "a" in the middle
+    ("समझ", "sa·majh"),
+    ("कैसे", "kai·se"),
+    ("जी", "jee"),
+    ("प्रणाम", "pra·naam"),
+    ("थोड़ा", "tho·daa"),
+])
+def test_words_split_the_way_they_are_spoken(word, spoken):
+    import sounds
+    split = sounds.split_sounds(word)
+    assert "·".join(sounds.romanize_part(split, p) for p in sounds.word_parts(split)) == spoken
+
+
+def word(text, accuracy, sounds, weak=None):
+    return {"word": text, "accuracy": accuracy, "sounds": sounds, "weak": accuracy < 80 if weak is None else weak}
+
+
+def run_with_azure(monkeypatch, accuracy, words=(), heard="namaste ji", completeness=100, missing=()):
     client = fake_client(
         {"romanized": heard},
-        {"overall": "Nice!", "went_well": [], "tips": [], "focus_sounds": [], "better_example": "namaste ji"},
+        {"overall": "Nice!", "went_well": ["Both words came through"], "tips": ["Luna's own tip"],
+         "focus_sounds": ["Luna's own sound"], "better_example": "namaste ji"},
     )
     monkeypatch.setattr(pronunciation, "client", client)
     monkeypatch.setattr(pronunciation, "check_pronunciation", lambda path, reference: {
-        "heard": "नमस्ते जी", "accuracy": accuracy, "weak_words": list(weak_words),
+        "heard": "नमस्ते जी", "accuracy": accuracy, "completeness": completeness,
+        "words": list(words), "missing": list(missing),
     })
     result = pronunciation.pronunciation_feedback("a.wav", "namaste ji", "नमस्ते जी")
     prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
@@ -398,37 +453,116 @@ def run_with_azure(monkeypatch, accuracy, heard="namaste ji", weak_words=()):
 
 def test_natural_accent_sounds_natural(monkeypatch):
     # Rhea's natural "namaste ji" got 90 and 93
-    result, prompt = run_with_azure(monkeypatch, 93)
+    result, prompt = run_with_azure(monkeypatch, 93, [word("नमस्ते", 92, [90] * 7), word("जी", 95, [95, 95])])
     assert result["result_level"] == "sounds natural"
     assert result["accent_checked"] is True
+    assert result["tips"] == [] and result["focus_sounds"] == []
     assert pronunciation.feedback_heading(result) == "Every word came through, and it sounds natural"
     assert "natural, like a Hindi speaker" in prompt
 
 
-def test_american_accent_gets_polish_the_sounds(monkeypatch):
-    # Rhea's American-accent "namaste ji" got 74 and 76
-    result, prompt = run_with_azure(monkeypatch, 76, weak_words=["नमस्ते"])
+def test_american_na_is_pointed_out_not_the_t(monkeypatch):
+    # The bug Rhea found: the coach talked about the "t", but she changed the "na"
+    result, prompt = run_with_azure(monkeypatch, 76, [word("नमस्ते", 41, AMERICAN_NAMASTE), word("जी", 90, [90, 90])])
+
     assert result["result_level"] == "polish the sounds"
-    assert "polish the sounds" in pronunciation.feedback_heading(result)
-    assert "probably an English accent" in prompt
-    assert "नमस्ते" in prompt
-    assert "not how they sounded" not in prompt      # the words-only rules are gone
+    assert pronunciation.feedback_heading(result) == "Now let's polish the sounds"
+    assert "don't say \"every word came through\"" in prompt
+    assert result["focus_sounds"] == ["the \"na\" in 'namaste'"]
+    assert result["tips"][0].startswith("Focus on the \"na\" in 'namaste'. The \"a\" there is short and relaxed")
+    assert "Play the Slow audio, say \"na\"" in result["tips"][-1]
+    assert "Luna's own tip" not in result["tips"]          # Luna can't add sound tips
+    assert not any("tongue" in tip for tip in result["tips"])   # nothing about the "t"
+    assert "the \"na\" in 'namaste'" in prompt
+    assert "soft \"t\"" not in prompt                     # no example tips to copy
+
+
+def test_different_mistakes_get_different_tips(monkeypatch):
+    american_t = [90, 90, 90, 90, 85, 20, 88]                 # only the "t" was off
+    result, _ = run_with_azure(monkeypatch, 76, [word("नमस्ते", 60, american_t)])
+    assert result["focus_sounds"] == ["the \"te\" in 'namaste'"]
+    assert "tongue" in result["tips"][0]
+
+
+def test_only_the_word_is_named_when_sound_scores_dont_line_up(monkeypatch):
+    result, _ = run_with_azure(monkeypatch, 76, [word("नमस्ते", 41, [18, 0, 14])])
+    assert result["focus_sounds"] == ["'namaste'"]
+    assert result["tips"][0] == "'namaste' sounded the least natural. Listen to how the Hindi audio says it and copy it."
+
+
+def test_no_weak_word_gives_general_practice_only(monkeypatch):
+    result, prompt = run_with_azure(monkeypatch, 80, [word("नमस्ते", 85, [85] * 7), word("जी", 82, [80, 84])])
+    assert result["focus_sounds"] == []
+    assert result["tips"] == ["Play the Slow audio and copy it closely, sound by sound, then say the whole phrase again."]
+    assert "no single word or sound" in prompt
 
 
 def test_wrong_words_come_first_even_with_azure(monkeypatch):
-    result, _ = run_with_azure(monkeypatch, 95, heard="kya haal hai")
+    result, _ = run_with_azure(monkeypatch, 60, [word("नमस्ते", 41, AMERICAN_NAMASTE)], heard="kya haal hai")
     assert result["result_level"] == "keep practicing"
+    assert result["tips"] == ["Luna's own tip"]               # word tips only, no sound tips yet
+    assert result["focus_sounds"] == []
 
 
 def test_nothing_heard_skips_romanizing(monkeypatch):
     client = fake_client({"overall": "x", "went_well": [], "tips": [], "focus_sounds": [], "better_example": "namaste ji"})
     monkeypatch.setattr(pronunciation, "client", client)
-    monkeypatch.setattr(pronunciation, "check_pronunciation", lambda path, reference: {"heard": "", "accuracy": 0, "weak_words": []})
+    monkeypatch.setattr(pronunciation, "check_pronunciation", lambda path, reference: {"heard": "", "accuracy": 0, "completeness": 0, "words": [], "missing": []})
     result = pronunciation.pronunciation_feedback("a.wav", "namaste ji", "नमस्ते जी")
-    assert result["result_level"] == "keep practicing"
-    assert client.chat.completions.create.call_count == 1
+    # Rhea's "ney-meh-ste" once came back with no words: say so, don't judge the accent
+    assert result["result_level"] == "nothing heard"
+    assert pronunciation.feedback_heading(result) == "We couldn't hear that clearly"
+    assert "natural" not in result["overall"]
+    assert client.chat.completions.create.call_count == 0   # nothing for Luna to say
 
 
 def test_stray_period_is_removed(monkeypatch):
     result, _ = run_with_azure(monkeypatch, 93, heard="namaste ji.")
     assert result["heard"] == "namaste ji"
+
+
+def test_muddled_sound_scores_only_name_the_word(monkeypatch):
+    # Rhea's site test (2026-11-18): Azure lost track of "ney-ma-ste"
+    muddled = [85, 0, 0, 0, 0, 0, 0]
+    result, _ = run_with_azure(monkeypatch, 60, [word("नमस्ते", 51, muddled)])
+    assert result["focus_sounds"] == ["'namaste'"]
+    assert result["tips"][0].startswith("'namaste' sounded the least natural")
+
+
+def test_sounds_with_nothing_useful_to_say_just_say_listen(monkeypatch):
+    # "ji" is one part, so there's nothing to compare: just name the word
+    result, _ = run_with_azure(monkeypatch, 70, [word("जी", 50, [40, 40])])
+    assert result["tips"][0] == "'ji' sounded the least natural. Listen to how the Hindi audio says it and copy it."
+    assert "plain" not in " ".join(result["tips"])
+
+
+def test_biggest_problem_comes_first(monkeypatch):
+    result, _ = run_with_azure(monkeypatch, 60, [
+        word("नमस्ते", 55, [18, 0, 14, 52, 48, 75, 38]),   # "na" averages 9
+        word("जी", 50, [40, 40]),                          # only the word, 50
+    ])
+    assert result["focus_sounds"] == ["the \"na\" in 'namaste'", "'ji'"]
+
+
+def test_low_completeness_alone_is_not_a_missing_word(monkeypatch):
+    # Rhea's American "aap kaisi hain", every word said: completeness 67 anyway.
+    # Completeness drops for badly said words too, so it isn't used.
+    result, _ = run_with_azure(
+        monkeypatch, 71,
+        [word("नमस्ते", 50, [48, 31, 40, 40, 40, 40, 40]), word("जी", 63, [83, 40])],
+        completeness=67,
+    )
+    assert result["result_level"] == "polish the sounds"
+    assert not any("couldn't clearly hear" in tip for tip in result["tips"])
+
+
+def test_word_azure_couldnt_find_is_named(monkeypatch):
+    # Rhea's American "aap kaisi hain": Azure couldn't find "aap" (completeness 67)
+    result, prompt = run_with_azure(
+        monkeypatch, 50, [word("जी", 90, [90, 90])], completeness=67, missing=["नमस्ते"],
+    )
+    assert result["result_level"] == "close"
+    assert result["tips"][0] == "We couldn't clearly hear 'namaste'. Make sure you say it, and copy how the Hindi audio says it."
+    assert result["focus_sounds"] == ["'namaste'"]
+    assert "couldn't clearly hear: 'namaste'" in prompt
+    assert "never \"you didn't say\"" in prompt
