@@ -427,3 +427,8 @@ def test_nothing_heard_skips_romanizing(monkeypatch):
     result = pronunciation.pronunciation_feedback("a.wav", "namaste ji", "नमस्ते जी")
     assert result["result_level"] == "keep practicing"
     assert client.chat.completions.create.call_count == 1
+
+
+def test_stray_period_is_removed(monkeypatch):
+    result, _ = run_with_azure(monkeypatch, 93, heard="namaste ji.")
+    assert result["heard"] == "namaste ji"

@@ -135,7 +135,8 @@ def pronunciation_feedback(user_audio, target_phrase, reference=None):
     if transcript.strip() == "":
         heard = ""   # nothing was heard, so nothing to romanize
     else:
-        heard = romanize_transcript(transcript, target_phrase)
+        # Azure ends sentences with "।", which can come back as a stray period
+        heard = romanize_transcript(transcript, target_phrase).strip().rstrip(".।")
 
     # 3. MEASURE DIFFERENCE (ignoring spelling differences)
     target_clean = simplify_spelling(target_phrase)
