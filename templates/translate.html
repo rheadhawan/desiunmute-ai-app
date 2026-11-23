@@ -31,6 +31,14 @@
       <label class="pill"><input type="radio" name="talking_to" value="{{ option }}" {% if loop.first %}checked{% endif %}> {{ option }}</label>
       {% endfor %}
     </fieldset>
+
+    <!-- Hindi changes for the listener too: "kaisi" to Nani, "kaise" to Nana -->
+    <fieldset>
+      <legend>They are</legend>
+      {% for option in listener_options %}
+      <label class="pill"><input type="radio" name="listener" value="{{ option }}" {% if loop.last %}checked{% endif %}> {{ option }}</label>
+      {% endfor %}
+    </fieldset>
   </div>
 
   <label class="check"><input type="checkbox" name="audio" value="Yes" checked> Play it in Hindi</label>

@@ -45,6 +45,27 @@
     {% endfor %}
   </div>
 </section>
+
+{% if unit.number_chart and loop.first %}
+<!-- Every number from 1 to 100: tap one to hear it -->
+<section class="card lesson-section">
+  <h2>Every number from 1 to 100</h2>
+  <p>Tap a number to hear it. Spellings vary a little between families, so go with how yours says it.</p>
+  <div id="number-audio" aria-live="polite"></div>
+  <div class="number-grid">
+    {% for number in numbers %}
+    <button type="button" class="number"
+            hx-post="/pronunciation/hear"
+            hx-vals='{{ {"phrase": number.phrase} | tojson }}'
+            hx-target="#number-audio"
+            aria-label="{{ number.english }}: {{ number.phrase }}">
+      <span class="digit">{{ number.english }}</span>
+      <span class="word">{{ number.phrase }}</span>
+    </button>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 {% endfor %}
 
 <!-- 3. Make it about my family -->
@@ -76,7 +97,7 @@
 <!-- 4. Ask the tutor -->
 <section class="card">
   <h2>Ask the tutor</h2>
-  <p class="hint">Anything about this lesson. "Do I use aap with my older cousin?"</p>
+  <p class="hint">Anything about this lesson. {{ unit.tutor_hint }}</p>
 
   <form hx-post="/lessons/{{ unit.id }}/ask"
         hx-target="#tutor-answer"
@@ -92,7 +113,7 @@
 </section>
 
 <nav class="lesson-nav">
-  {% if unit.id == 1 %}<a href="/lessons/2">Next: Unit 2, The family map →</a>
+  {% if next_unit %}<a href="/lessons/{{ next_unit.id }}">Next: Unit {{ next_unit.id }}, {{ next_unit.title }} →</a>
   {% else %}<a href="/lessons">← Back to all lessons</a>{% endif %}
 </nav>
 

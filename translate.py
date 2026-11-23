@@ -1,12 +1,14 @@
 import json
-from config import client, TEXT_MODEL, NATURAL_HINDI_RULES, TALKING_TO, MAX_TEXT_LENGTH
+from config import client, TEXT_MODEL, NATURAL_HINDI_RULES, TALKING_TO, LISTENER, MAX_TEXT_LENGTH
 from audio import make_audio
 
 # Translator function
 # Returns a dictionary so the app can show each part separately
 # and send only the Devanagari line to the voice.
 
-def desiunmute_translate(text, gender="Female", talking_to="A friend", pronunciation="Yes"):
+# listener is whether the person you're talking to is a woman or a man (see LISTENER)
+
+def desiunmute_translate(text, gender="Female", talking_to="A friend", pronunciation="Yes", listener="Not sure"):
     if not text or text.strip() == "":
         raise ValueError("Please type an English sentence.")
 
@@ -22,6 +24,7 @@ Rules:
 {NATURAL_HINDI_RULES}
 - The learner is {gender.lower()}. Use the correct verb endings for a {gender.lower()} speaker.
 - {TALKING_TO[talking_to]}
+- {LISTENER[listener]}
 - Learners come here to learn Hindi, so the "translation" must always be Hindi.
   If people would often just say the English word (like "hello" or "sorry"),
   put the closest Hindi word in "translation" (for "hello": "namaste", or

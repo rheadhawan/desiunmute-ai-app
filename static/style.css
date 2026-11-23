@@ -438,3 +438,32 @@ a.unit:hover { border-color: var(--plum); }
   button { width: auto; }
   .invite form { max-width: 420px; }
 }
+
+/* Unit 3: tap-to-hear number chart (5 across on phones, 10 on wider screens) */
+.number-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+button.number {
+  margin-top: 0;
+  width: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  background: var(--cream);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-weight: 400;
+}
+button.number:hover, button.number:focus-visible { background: var(--marigold-soft); border-color: var(--plum); }
+.number .digit { font-weight: 600; font-size: 1.05rem; }
+.number .word { font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; }
+#number-audio:not(:empty) { margin-top: 8px; }
+@media (min-width: 720px) {
+  .number-grid { grid-template-columns: repeat(10, 1fr); }
+}

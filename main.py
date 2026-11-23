@@ -12,13 +12,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from config import TALKING_TO, MAX_TEXT_LENGTH, MAX_CONVERSATION_TURNS
+from config import TALKING_TO, LISTENER, MAX_TEXT_LENGTH, MAX_CONVERSATION_TURNS
 from translate import desiunmute_translate
 from pronunciation import pronunciation_feedback, feedback_heading, phrase_to_devanagari, saved_devanagari, PRACTICE_PHRASES
 from audio import make_audio
 from azure_speech import azure_is_set_up
 from conversation import SCENARIOS, SCENARIO_INTROS, start_conversation, conversation_practice, how_do_i_say, conversation_summary
-from lessons import UNITS, get_unit, check_answers, personalize_lesson, ask_tutor
+from lessons import UNITS, NUMBERS, get_unit, next_unit, check_answers, personalize_lesson, ask_tutor
 
 # The DesiUnmute website
 # This file only handles pages and buttons. All the AI work stays in
@@ -240,7 +240,11 @@ def home_page(request: Request):
 def translate_page(request: Request):
     if not is_invited(request):
         return go_to_invite(request)
-    return templates.TemplateResponse(request, "translate.html", {"talking_to_options": TALKING_TO.keys()})
+    return templates.TemplateResponse(
+        request,
+        "translate.html",
+        {"talking_to_options": TALKING_TO.keys(), "listener_options": LISTENER.keys()},
+    )
 
 
 # Runs when the learner clicks "Translate". HTMX swaps the result into the page.
@@ -250,6 +254,7 @@ def translate_result(
     text: str = Form(""),
     gender: str = Form("Female"),
     talking_to: str = Form("A friend"),
+    listener: str = Form("Not sure"),
     audio: str = Form("No"),
 ):
     if not is_invited(request):
@@ -258,11 +263,13 @@ def translate_result(
     # Don't let anyone send a respect level we don't have
     if talking_to not in TALKING_TO:
         talking_to = "A friend"
+    if listener not in LISTENER:
+        listener = "Not sure"
 
     try:
         check_typed_text(text, "Please type something in English to translate.")
         count_ai_use(request, "translate", text=1, voice=1 if audio == "Yes" else 0)
-        result = desiunmute_translate(text, gender, talking_to, audio)
+        result = desiunmute_translate(text, gender, talking_to, audio, listener)
     except Exception as error:
         return show_error(request, error)
 
@@ -386,7 +393,7 @@ def lesson_page(request: Request, unit_id: int):
     if unit is None:
         return RedirectResponse("/lessons", status_code=303)
 
-    return templates.TemplateResponse(request, "lesson.html", {"unit": unit})
+    return templates.TemplateResponse(request, "lesson.html", {"unit": unit, "next_unit": next_unit(unit), "numbers": NUMBERS})
 
 
 # "Do you know this?" check

@@ -45,3 +45,11 @@ TALKING_TO = {
     "An elder": "Use 'aap', respectful plural verbs, and 'ji' where natural, like talking to a parent, grandparent, aunt or uncle.",
     "A child": "Use 'tum' with a warm, simple tone, like talking to a younger child in the family.",
 }
+
+# Whether the person you're talking to is a woman or a man.
+# Hindi changes words for them too: "aap kaisi hain?" to Nani, "aap kaise hain?" to Nana.
+LISTENER = {
+    "A woman": "The person being spoken to is a woman. Use feminine forms for her (aap kaisi hain, tum kaisi ho, aap kahan gayi thin).",
+    "A man": "The person being spoken to is a man. Use masculine forms for him (aap kaise hain, tum kaise ho, aap kahan gaye the).",
+    "Not sure": "We don't know if the person being spoken to is a woman or a man. If the sentence changes for them (like kaise/kaisi), use the masculine form in \"translation\" and put the feminine form first in \"alternatives\", marked \"(to a woman)\".",
+}

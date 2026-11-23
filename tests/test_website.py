@@ -22,7 +22,7 @@ def invited_client():
     return client
 
 
-def fake_translation(text, gender, talking_to, audio):
+def fake_translation(text, gender, talking_to, audio, listener="Not sure"):
     return {
         "translation": "khana kha liya?",
         "devanagari": "खाना खा लिया?",
@@ -182,12 +182,12 @@ def test_hear_empty_phrase_asks_for_one():
 
 # Heritage Gaps tests
 
-def test_lessons_page_lists_units_and_marks_coming_soon():
+def test_lessons_page_lists_all_nine_units():
     client = invited_client()
     response = client.get("/lessons")
     assert "Talking to elders the right way" in response.text
-    assert "The family map" in response.text
-    assert "Coming soon" in response.text
+    assert "Listening to real fast speech" in response.text
+    assert "Coming soon" not in response.text
 
 
 def test_lesson_page_shows_romanized_phrases_not_devanagari():
@@ -199,7 +199,7 @@ def test_lesson_page_shows_romanized_phrases_not_devanagari():
 
 def test_unfinished_lesson_goes_back_to_list():
     client = invited_client()
-    response = client.get("/lessons/5", follow_redirects=False)
+    response = client.get("/lessons/10", follow_redirects=False)
     assert response.headers["location"] == "/lessons"
 
 
@@ -667,3 +667,48 @@ def test_coach_page_mentions_azure_only_when_set_up(monkeypatch):
     assert "sent to OpenAI" in invited_client().get("/pronunciation").text
     monkeypatch.setattr(main, "azure_is_set_up", lambda: True)
     assert "sent to Microsoft Azure" in invited_client().get("/pronunciation").text
+
+
+def test_every_lesson_page_opens_and_links_to_the_next():
+    client = invited_client()
+    for unit_id in range(1, 10):
+        response = client.get(f"/lessons/{unit_id}")
+        assert response.status_code == 200
+        if unit_id < 9:
+            assert f'href="/lessons/{unit_id + 1}"' in response.text
+        else:
+            assert "Back to all lessons" in response.text
+
+
+def test_lesson_tutor_hint_fits_the_unit():
+    client = invited_client()
+    assert "saadhe ek or dedh" in client.get("/lessons/3").text
+
+
+def test_translate_passes_who_youre_talking_to(monkeypatch):
+    seen = []
+    monkeypatch.setattr(main, "desiunmute_translate", lambda *args: seen.append(args) or fake_translation(*args))
+    client = invited_client()
+
+    assert "They are" in client.get("/translate").text
+    client.post("/translate", data={"text": "How are you?", "talking_to": "An elder", "listener": "A woman"})
+    client.post("/translate", data={"text": "How are you?", "listener": "Someone made up"})
+
+    assert seen[0][4] == "A woman"
+    assert seen[1][4] == "Not sure"        # unknown values fall back safely
+
+
+def test_unit_3_has_the_tap_to_hear_number_chart():
+    client = invited_client()
+    page = client.get("/lessons/3").text
+    assert "Every number from 1 to 100" in page
+    assert page.count('class="number"') == 100
+    assert "ninyaanve" in page and "एक" not in page      # no Devanagari on screen
+    assert "Every number from 1 to 100" not in client.get("/lessons/4").text
+
+
+def test_tapping_a_number_uses_saved_hindi(monkeypatch):
+    monkeypatch.setattr(main, "make_audio", lambda devanagari: devanagari.encode())
+    monkeypatch.setattr(main, "phrase_to_devanagari", lambda phrase: pytest.fail("numbers are saved, no AI needed"))
+    response = invited_client().post("/pronunciation/hear", data={"phrase": "sattaaees"})
+    assert "data:audio/mpeg;base64," in response.text

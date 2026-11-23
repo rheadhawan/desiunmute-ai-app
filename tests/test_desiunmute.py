@@ -566,3 +566,38 @@ def test_word_azure_couldnt_find_is_named(monkeypatch):
     assert result["focus_sounds"] == ["'namaste'"]
     assert "couldn't clearly hear: 'namaste'" in prompt
     assert "never \"you didn't say\"" in prompt
+
+
+def test_same_phrase_never_has_two_different_devanagari():
+    seen = {}
+    for example in lessons.all_lesson_phrases():
+        assert seen.setdefault(example["phrase"], example["devanagari"]) == example["devanagari"]
+
+
+def test_every_unit_is_complete():
+    for unit in lessons.UNITS:
+        assert unit["available"]
+        assert unit["tutor_hint"]
+        assert len(unit["check"]) >= 3
+        for section in unit["sections"]:
+            assert section["text"] and section["examples"]
+
+
+def test_translate_knows_the_listener_is_a_woman(monkeypatch):
+    client = fake_client({"translation": "Nani ji, aap kaisi hain?", "devanagari": "नानी जी, आप कैसी हैं?"})
+    monkeypatch.setattr(translate, "client", client)
+    translate.desiunmute_translate("How are you, Nani?", "Female", "An elder", "No", "A woman")
+    prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "spoken to is a woman" in prompt
+
+
+def test_translate_not_sure_gives_both_forms(monkeypatch):
+    client = fake_client({"translation": "aap kaise hain?", "devanagari": "आप कैसे हैं?"})
+    monkeypatch.setattr(translate, "client", client)
+    translate.desiunmute_translate("How are you?", pronunciation="No")
+    prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "(to a woman)" in prompt
+
+
+def test_number_chart_runs_1_to_100():
+    assert [int(number["english"]) for number in lessons.NUMBERS] == list(range(1, 101))
