@@ -15,6 +15,12 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Luna and Terra both got Hindi gender and respect forms right, and Luna
 # costs about a tenth of Terra.
 TEXT_MODEL = "gpt-6-luna"
+
+# How much Luna "thinks" before answering (none, low, medium, high...).
+# The default is medium. Conversation replies use low, because a short chat
+# reply doesn't need much thinking and waiting for Nani felt slow (2026-11-24).
+# If gender/respect mistakes come back in conversations, set this to "medium".
+CONVERSATION_REASONING = "low"
 # gpt-4o-mini-tts shuts down Jan 6, 2027. Rhea compared voices with try_voices.py
 # on 2026-11-17 and picked Marin from gpt-realtime-2.1-mini (see audio.py).
 VOICE_MODEL = "gpt-realtime-2.1-mini"

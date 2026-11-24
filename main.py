@@ -17,7 +17,7 @@ from translate import desiunmute_translate
 from pronunciation import pronunciation_feedback, feedback_heading, phrase_to_devanagari, saved_devanagari, PRACTICE_PHRASES
 from audio import make_audio
 from azure_speech import azure_is_set_up
-from conversation import SCENARIOS, SCENARIO_INTROS, start_conversation, conversation_practice, how_do_i_say, conversation_summary
+from conversation import SCENARIOS, SCENARIO_INTROS, OPENING_LINES, start_conversation, conversation_practice, how_do_i_say, conversation_summary
 from lessons import UNITS, NUMBERS, get_unit, next_unit, check_answers, personalize_lesson, ask_tutor
 
 # The DesiUnmute website
@@ -547,16 +547,45 @@ def conversation_start(request: Request, slug: str):
         return chat_error(ValueError("Please pick a conversation."))
 
     try:
-        count_ai_use(request, "conversation start", text=1, voice=1)
-        reply, history = start_conversation(SCENARIO_SLUGS[slug])
+        reply, history = start_conversation(SCENARIO_SLUGS[slug])   # ready-made, no AI
+
+        # The opener's audio is made once and reused (usually ready already:
+        # see warm_up_openings below)
+        devanagari = reply["reply_devanagari"]
+        if devanagari not in saved_audio:
+            count_ai_use(request, "conversation start (voice)", voice=1)
+            saved_audio[devanagari] = make_audio(devanagari)
+        audio = saved_audio[devanagari]
     except Exception as error:
         return chat_error(error)
 
     return chat_response(
         "partials/chat_turn.html",
-        {"reply": reply, "audio_url": audio_to_data_url(reply["audio"])},
+        {"reply": reply, "audio_url": audio_to_data_url(audio)},
         history,
     )
+
+
+# Makes the audio for every opening line in the background when the site
+# starts on Render, so "Start the call" is instant. About 13 voice clips per
+# deploy (a few cents); not counted in anyone's daily limit.
+# Not run locally, because --reload restarts the site on every change.
+
+def warm_up_openings():
+    for openings in OPENING_LINES.values():
+        for opening in openings:
+            devanagari = opening["reply_devanagari"]
+            if devanagari in saved_audio:
+                continue
+            try:
+                saved_audio[devanagari] = make_audio(devanagari)
+            except Exception as error:
+                print(f"Couldn't warm up an opening line: {error!r}")
+    print("Opening lines ready")
+
+
+if os.getenv("RENDER"):
+    threading.Thread(target=warm_up_openings, daemon=True).start()
 
 
 # The learner answers out loud, the character replies

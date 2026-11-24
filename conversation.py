@@ -1,5 +1,7 @@
 import json
-from config import client, TEXT_MODEL, NATURAL_HINDI_RULES, MAX_CONVERSATION_TURNS, MAX_TEXT_LENGTH
+import time
+import random
+from config import client, TEXT_MODEL, CONVERSATION_REASONING, NATURAL_HINDI_RULES, MAX_CONVERSATION_TURNS, MAX_TEXT_LENGTH
 from audio import transcribe_audio, make_audio
 
 # Conversation scenarios
@@ -22,42 +24,44 @@ SCENARIO_INTROS = {
 }
 
 
+# How each character opens the call. Ready-made, so "Start the call" needs
+# no AI and the audio can be made once and reused (it used to take 5-10 s).
+# Written so they work for any learner (no "kaise/kaisi" about them).
+# DRAFT: to be reviewed by a native speaker, like the lessons.
+OPENING_LINES = {
+    "Phone call with Nani": [
+        {"reply": "Hello beta! Sab theek? Khana kha liya?", "reply_devanagari": "हैलो बेटा! सब ठीक? खाना खा लिया?", "reply_english": "Hello dear! All well? Have you eaten?"},
+        {"reply": "Arre beta, bahut din ho gaye! Sab theek hai na?", "reply_devanagari": "अरे बेटा, बहुत दिन हो गए! सब ठीक है ना?", "reply_english": "Oh dear, it's been so long! Everything okay?"},
+        {"reply": "Hello beta, Nani bol rahi hoon. Khana khaya?", "reply_devanagari": "हैलो बेटा, नानी बोल रही हूँ। खाना खाया?", "reply_english": "Hello dear, it's Nani. Have you eaten?"},
+    ],
+    "Talking to family": [
+        {"reply": "Arre beta, aao aao! Kitne dinon baad mile hain! Sab theek?", "reply_devanagari": "अरे बेटा, आओ आओ! कितने दिनों बाद मिले हैं! सब ठीक?", "reply_english": "Oh dear, come in, come in! It's been so long! All well?"},
+        {"reply": "Beta, aajkal kya chal raha hai? Padhai kaisi chal rahi hai?", "reply_devanagari": "बेटा, आजकल क्या चल रहा है? पढ़ाई कैसी चल रही है?", "reply_english": "Dear, what's going on these days? How are your studies going?"},
+    ],
+    "Ordering food": [
+        {"reply": "Haan ji, boliye, kya laaun?", "reply_devanagari": "हाँ जी, बोलिए, क्या लाऊँ?", "reply_english": "Yes, tell me, what can I bring you?"},
+        {"reply": "Namaste ji! Aaj kya khaayenge?", "reply_devanagari": "नमस्ते जी! आज क्या खाएँगे?", "reply_english": "Hello! What would you like to eat today?"},
+    ],
+    "Introducing yourself": [
+        {"reply": "Namaste! Aap ladke waalon ki taraf se hain ya ladki waalon ki?", "reply_devanagari": "नमस्ते! आप लड़के वालों की तरफ़ से हैं या लड़की वालों की?", "reply_english": "Hello! Are you from the groom's side or the bride's side?"},
+        {"reply": "Namaste! Aapko pehle kabhi nahi dekha. Aapka naam kya hai?", "reply_devanagari": "नमस्ते! आपको पहले कभी नहीं देखा। आपका नाम क्या है?", "reply_english": "Hello! I don't think I've seen you before. What's your name?"},
+    ],
+    "Talking about your day": [
+        {"reply": "Aur sunao, aaj ka din kaisa raha?", "reply_devanagari": "और सुनाओ, आज का दिन कैसा रहा?", "reply_english": "So tell me, how was your day?"},
+        {"reply": "Kya haal hai? Aaj poore din kya kiya?", "reply_devanagari": "क्या हाल है? आज पूरे दिन क्या किया?", "reply_english": "How's it going? What did you do all day?"},
+    ],
+}
+
+
 # Starts a conversation: the character speaks first, like a real call.
+# Picks one of the ready-made openers (no AI). The website adds the audio.
 # Returns the opening line (a dictionary) and the history so far.
 
 def start_conversation(scenario):
     if scenario not in SCENARIOS:
         raise ValueError("Please pick a conversation.")
 
-    prompt = f"""
-You are a character in a Hindi speaking practice app for Indian heritage learners.
-The learner understands some Hindi but cannot read Devanagari.
-
-Your character: {SCENARIOS[scenario]}
-
-Start the conversation with a short, natural opening (1-2 sentences), the way
-this person really would. End with something easy for the learner to answer.
-
-Rules:
-{NATURAL_HINDI_RULES}
-
-Reply ONLY with JSON in this exact format:
-{{
-  "reply": "your opening in romanized Hindi",
-  "reply_devanagari": "the same in Devanagari (used only for audio)",
-  "reply_english": "the English meaning"
-}}
-"""
-
-    response = client.chat.completions.create(
-        model=TEXT_MODEL,
-        response_format={"type": "json_object"},
-        messages=[{"role": "system", "content": prompt}],
-    )
-
-    reply = json.loads(response.choices[0].message.content)
-    reply["audio"] = make_audio(reply["reply_devanagari"])
-
+    reply = dict(random.choice(OPENING_LINES[scenario]))
     history = [{"role": "assistant", "content": reply["reply"]}]
     return reply, history
 
@@ -76,8 +80,12 @@ def conversation_practice(scenario, audio_path, history):
     if len(history) >= MAX_CONVERSATION_TURNS * 2:
         raise ValueError("This conversation is getting long! Start a new one to keep practicing.")
 
+    # Timing for each step shows up in Render's Logs, to see what's slow
+    started = time.perf_counter()
+
     # 1. Transcribe speech to text
     user_text = transcribe_audio(audio_path)
+    heard_at = time.perf_counter()
 
     # 2. Get the character's reply
     prompt = f"""
@@ -111,11 +119,13 @@ Reply ONLY with JSON in this exact format:
 
     response = client.chat.completions.create(
         model=TEXT_MODEL,
+        reasoning_effort=CONVERSATION_REASONING,   # faster replies (see config.py)
         response_format={"type": "json_object"},
         messages=messages,
     )
 
     reply = json.loads(response.choices[0].message.content)
+    replied_at = time.perf_counter()
 
     # 3. Remember this turn
     new_history = history + [
@@ -125,7 +135,12 @@ Reply ONLY with JSON in this exact format:
 
     # 4. Make the character's reply into speech
     reply["audio"] = make_audio(reply["reply_devanagari"])
+    done_at = time.perf_counter()
 
+    print(
+        f"Conversation reply timing: listening {heard_at - started:.1f}s, "
+        f"writing the reply {replied_at - heard_at:.1f}s, voice {done_at - replied_at:.1f}s"
+    )
     return reply, new_history
 
 

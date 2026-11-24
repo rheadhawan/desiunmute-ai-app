@@ -601,3 +601,27 @@ def test_translate_not_sure_gives_both_forms(monkeypatch):
 
 def test_number_chart_runs_1_to_100():
     assert [int(number["english"]) for number in lessons.NUMBERS] == list(range(1, 101))
+
+
+def test_every_conversation_has_ready_made_openers():
+    for scenario in conversation.SCENARIOS:
+        openings = conversation.OPENING_LINES[scenario]
+        assert openings
+        for opening in openings:
+            assert opening["reply"] and opening["reply_devanagari"] and opening["reply_english"]
+
+
+def test_start_conversation_uses_no_ai(monkeypatch):
+    monkeypatch.setattr(conversation, "client", None)        # any AI call would crash
+    reply, history = conversation.start_conversation("Phone call with Nani")
+    assert reply in conversation.OPENING_LINES["Phone call with Nani"]
+    assert history == [{"role": "assistant", "content": reply["reply"]}]
+
+
+def test_conversation_replies_think_less_for_speed(monkeypatch, tmp_path):
+    client = fake_client({"you_said": "haan", "reply": "accha", "reply_devanagari": "अच्छा", "reply_english": "okay", "side_note": ""})
+    monkeypatch.setattr(conversation, "client", client)
+    monkeypatch.setattr(conversation, "transcribe_audio", lambda path: "haan")
+    monkeypatch.setattr(conversation, "make_audio", lambda text: b"audio")
+    conversation.conversation_practice("Phone call with Nani", "a.wav", [])
+    assert client.chat.completions.create.call_args.kwargs["reasoning_effort"] == "low"

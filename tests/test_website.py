@@ -291,6 +291,7 @@ def test_unknown_conversation_goes_back_to_list():
 
 def test_character_speaks_first(monkeypatch):
     monkeypatch.setattr(main, "start_conversation", fake_start)
+    monkeypatch.setattr(main, "make_audio", lambda devanagari: b"audio")
     client = invited_client()
 
     data = client.post("/conversation/phone-call-with-nani/start").json()
@@ -431,10 +432,19 @@ def test_each_person_has_their_own_limit(monkeypatch):
 
 
 def test_total_limit_protects_the_bill(monkeypatch):
-    monkeypatch.setattr(main, "start_conversation", fake_start)
+    monkeypatch.setattr(main, "desiunmute_translate", fake_translation)
     fresh_counts(monkeypatch, DAILY_LIMIT_TOTAL=2)
-    invited_client().post("/conversation/phone-call-with-nani/start")       # 2 calls
-    data = invited_client().post("/conversation/phone-call-with-nani/start").json()
+    invited_client().post("/translate", data={"text": "hi", "audio": "Yes"})   # 2 calls
+    data_html = invited_client().post("/translate", data={"text": "hi"}).text
+    assert "daily beta limit" in data_html
+
+
+def test_total_limit_also_covers_conversations(monkeypatch):
+    monkeypatch.setattr(main, "desiunmute_translate", fake_translation)
+    monkeypatch.setattr(main, "make_audio", lambda devanagari: b"audio")
+    fresh_counts(monkeypatch, DAILY_LIMIT_TOTAL=2)
+    invited_client().post("/translate", data={"text": "hi", "audio": "Yes"})   # 2 calls
+    data = invited_client().post("/conversation/talking-about-your-day/start").json()
     assert "daily beta limit" in data["html"]
     assert data["history"] is None
 
@@ -712,3 +722,27 @@ def test_tapping_a_number_uses_saved_hindi(monkeypatch):
     monkeypatch.setattr(main, "phrase_to_devanagari", lambda phrase: pytest.fail("numbers are saved, no AI needed"))
     response = invited_client().post("/pronunciation/hear", data={"phrase": "sattaaees"})
     assert "data:audio/mpeg;base64," in response.text
+
+
+def test_starting_a_call_needs_no_ai_and_reuses_audio(monkeypatch):
+    made = []
+    monkeypatch.setattr(main, "make_audio", lambda devanagari: made.append(devanagari) or b"audio")
+    fresh_counts(monkeypatch)
+    client = invited_client()
+
+    for _ in range(6):
+        data = client.post("/conversation/ordering-food/start").json()
+        assert "data:audio/mpeg;base64," in data["html"]
+
+    # Ordering food has 2 openers: at most 2 recordings, ever, and no text calls
+    assert len(made) <= 2
+    assert main.ai_uses["total"] == len(made)
+
+
+def test_warm_up_makes_every_opening_once(monkeypatch):
+    made = []
+    monkeypatch.setattr(main, "make_audio", lambda devanagari: made.append(devanagari) or b"audio")
+    main.warm_up_openings()
+    main.warm_up_openings()
+    openings = [o for openings in main.OPENING_LINES.values() for o in openings]
+    assert len(made) == len(openings)
