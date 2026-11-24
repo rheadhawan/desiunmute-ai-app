@@ -253,6 +253,23 @@ if (chat) {
   // The conversation so far, sent back with every turn so the AI remembers it
   let history = [];
 
+  // "I am: a woman / a man", remembered for next time on this browser
+  const learnerChoices = document.querySelectorAll("input[name='learner']");
+  try {
+    const saved = localStorage.getItem("learner");
+    learnerChoices.forEach(function (choice) { choice.checked = choice.value === saved; });
+  } catch (error) { /* storage blocked: just ask again */ }
+  learnerChoices.forEach(function (choice) {
+    choice.addEventListener("change", function () {
+      try { localStorage.setItem("learner", choice.value); } catch (error) {}
+    });
+  });
+
+  function chosenLearner() {
+    const checked = document.querySelector("input[name='learner']:checked");
+    return checked ? checked.value : "";
+  }
+
   // Sends a request and adds the new chat bubbles
   async function takeTurn(url, form, waitingText) {
     chatLoading.textContent = waitingText;
@@ -303,6 +320,7 @@ if (chat) {
 
       const form = new FormData();
       form.append("history", JSON.stringify(history));
+      form.append("learner", chosenLearner());
       form.append("recording", recording, fileName);
       takeTurn(`/conversation/${slug}/reply`, form, "Listening to you…");
     }
@@ -312,6 +330,7 @@ if (chat) {
   endButton.addEventListener("click", async function () {
     const form = new FormData();
     form.append("history", JSON.stringify(history));
+    form.append("learner", chosenLearner());
 
     endButton.disabled = true;
     summaryLoading.style.display = "block";

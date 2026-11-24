@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from config import TALKING_TO, LISTENER, MAX_TEXT_LENGTH, MAX_CONVERSATION_TURNS
+from config import TALKING_TO, LISTENER, LEARNER, MAX_TEXT_LENGTH, MAX_CONVERSATION_TURNS
 from translate import desiunmute_translate
 from pronunciation import pronunciation_feedback, feedback_heading, phrase_to_devanagari, saved_devanagari, PRACTICE_PHRASES
 from audio import make_audio
@@ -47,7 +47,7 @@ INVITE_CODE = os.getenv("INVITE_CODE", "namaste")
 # up to 3 calls (for example: listen to you + write a reply + speak it).
 #   text   = gpt-6-luna (cheapest)
 #   voice  = gpt-realtime-2.1-mini (most expensive, so it gets its own cap)
-#   listen = gpt-4o-transcribe, or Azure for the Pronunciation Coach (also its own cap)
+#   listen = gpt-transcribe, or Azure for the Pronunciation Coach (also its own cap)
 # Change any of these on Render (Environment) without touching the code.
 DAILY_LIMIT_PER_PERSON = int(os.getenv("DAILY_LIMIT_PER_PERSON", "90"))   # all calls, one tester
 DAILY_LIMIT_TOTAL = int(os.getenv("DAILY_LIMIT_TOTAL", "600"))            # all calls, everyone
@@ -594,6 +594,7 @@ def conversation_reply(
     request: Request,
     slug: str,
     history: str = Form("[]"),
+    learner: str = Form(""),
     recording: UploadFile | None = File(None),
 ):
     if not is_invited(request):
@@ -612,7 +613,9 @@ def conversation_reply(
 
     try:
         count_ai_use(request, "conversation reply", text=1, voice=1, listen=1)
-        reply, new_history = conversation_practice(SCENARIO_SLUGS[slug], audio_path, past_history)
+        if learner not in LEARNER:
+            learner = ""
+        reply, new_history = conversation_practice(SCENARIO_SLUGS[slug], audio_path, past_history, learner)
     except Exception as error:
         return chat_error(error)
     finally:
@@ -627,7 +630,7 @@ def conversation_reply(
 
 # "How do I say...?" (HTMX)
 @app.post("/conversation/{slug}/say")
-def conversation_say(request: Request, slug: str, question: str = Form("")):
+def conversation_say(request: Request, slug: str, question: str = Form(""), learner: str = Form("")):
     if not is_invited(request):
         return go_to_invite(request)
 
@@ -637,7 +640,9 @@ def conversation_say(request: Request, slug: str, question: str = Form("")):
     try:
         check_typed_text(question, "Type what you want to say in English.")
         count_ai_use(request, "how do I say", text=1, voice=1)
-        result = how_do_i_say(question, SCENARIO_SLUGS[slug])
+        if learner not in LEARNER:
+            learner = ""
+        result = how_do_i_say(question, SCENARIO_SLUGS[slug], learner)
     except Exception as error:
         return show_error(request, error)
 
@@ -650,7 +655,7 @@ def conversation_say(request: Request, slug: str, question: str = Form("")):
 
 # End of conversation summary
 @app.post("/conversation/{slug}/summary")
-def conversation_end(request: Request, slug: str, history: str = Form("[]")):
+def conversation_end(request: Request, slug: str, history: str = Form("[]"), learner: str = Form("")):
     if not is_invited(request):
         return go_to_invite(request)
 
@@ -660,7 +665,9 @@ def conversation_end(request: Request, slug: str, history: str = Form("[]")):
         if not any(message["role"] == "user" for message in past_history):
             raise ValueError("Say something first! Then you'll get a summary.")
         count_ai_use(request, "conversation summary", text=1)
-        summary = conversation_summary(SCENARIO_SLUGS.get(slug, ""), past_history)
+        if learner not in LEARNER:
+            learner = ""
+        summary = conversation_summary(SCENARIO_SLUGS.get(slug, ""), past_history, learner)
     except Exception as error:
         return show_error(request, error)
 

@@ -1,7 +1,7 @@
 import json
 import time
 import random
-from config import client, TEXT_MODEL, CONVERSATION_REASONING, NATURAL_HINDI_RULES, MAX_CONVERSATION_TURNS, MAX_TEXT_LENGTH
+from config import client, TEXT_MODEL, CONVERSATION_REASONING, LEARNER, NATURAL_HINDI_RULES, MAX_CONVERSATION_TURNS, MAX_TEXT_LENGTH
 from audio import transcribe_audio, make_audio
 
 # Conversation scenarios
@@ -70,7 +70,9 @@ def start_conversation(scenario):
 # history is the list of messages so far, so the AI remembers the conversation.
 # Returns the reply (a dictionary) and the updated history.
 
-def conversation_practice(scenario, audio_path, history):
+# learner is "A woman", "A man" or "" (not chosen), see LEARNER in config.py
+
+def conversation_practice(scenario, audio_path, history, learner=""):
     if scenario not in SCENARIOS:
         raise ValueError("Please pick a conversation.")
 
@@ -96,16 +98,26 @@ Your character: {SCENARIOS[scenario]}
 
 Rules:
 {NATURAL_HINDI_RULES}
+- {LEARNER.get(learner, LEARNER[""])}
 - Stay in character and keep the conversation going naturally.
 - Keep replies short (1-3 sentences) so the learner can follow.
 - If the learner struggles, use simpler Hindi. If they do well, sound more natural.
 - If the learner made a mistake, do NOT interrupt the conversation. Put one
   gentle tip in "side_note" instead (or leave it empty if there's nothing important).
 - If the learner used 'tum' or 'tu' with an elder, mention it kindly in "side_note".
+- Answer what the learner just said first, before going back to earlier topics.
+- Don't ask again about something you already asked in this conversation.
+
+The learner just said (their latest message, the one to answer):
+{user_text}
+
+"you_said" must be exactly that latest message, written in romanized Hindi.
+Never copy an earlier message there (Rhea's test, 2026-11-24: it once showed
+her previous reply instead of the new one).
 
 Reply ONLY with JSON in this exact format:
 {{
-  "you_said": "what the learner said, in romanized Hindi",
+  "you_said": "the learner's latest message above, in romanized Hindi",
   "reply": "your reply in romanized Hindi",
   "reply_devanagari": "the same reply in Devanagari (used only for audio)",
   "reply_english": "the English meaning of your reply",
@@ -147,7 +159,7 @@ Reply ONLY with JSON in this exact format:
 # "How do I say...?" helper
 # The learner asks in English mid-conversation without breaking the flow.
 
-def how_do_i_say(question, scenario):
+def how_do_i_say(question, scenario, learner=""):
     if not question or question.strip() == "":
         raise ValueError("Type what you want to say in English.")
 
@@ -161,6 +173,7 @@ situation, using the right respect level for who they are talking to.
 
 Rules:
 {NATURAL_HINDI_RULES}
+- {LEARNER.get(learner, LEARNER[""]).replace("The learner is", "The learner (the speaker) is")}
 
 Reply ONLY with JSON: {{"say_it": "romanized Hindi", "devanagari": "same in Devanagari", "note": "one short tip"}}
 """
@@ -181,7 +194,7 @@ Reply ONLY with JSON: {{"say_it": "romanized Hindi", "devanagari": "same in Deva
 
 # End-of-conversation summary
 
-def conversation_summary(scenario, history):
+def conversation_summary(scenario, history, learner=""):
     if len(history) == 0:
         raise ValueError("Have a conversation first!")
 
@@ -198,6 +211,7 @@ You are a warm Hindi tutor. Here is a practice conversation ({scenario}).
 Write a short, encouraging summary for the learner in simple English. No scores or grades.
 Rules:
 {NATURAL_HINDI_RULES}
+- {LEARNER.get(learner, LEARNER[""])} Only point out a gender ending as a mistake if you know the learner's gender.
 
 Reply ONLY with JSON in this exact format:
 {{

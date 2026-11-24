@@ -142,11 +142,27 @@ def to_mp3(pcm_bytes):
 # language="hi" tells the model to expect Hindi, so it doesn't translate it.
 # It usually returns Devanagari, so callers romanize it afterwards.
 
+# What the learner says is usually Hindi with some English mixed in.
+# Kept general on purpose: naming specific words (like "ji") could make the
+# model "hear" them when they weren't said, the way Azure did.
+LISTENING_CONTEXT = "Casual spoken Hindi between family members, with some English words mixed in."
+
+
 def transcribe_audio(file_path):
     with open(file_path, "rb") as f:
-        transcript = client.audio.transcriptions.create(
-            model=TRANSCRIBE_MODEL,
-            file=f,
-            language="hi",
-        )
+        if TRANSCRIBE_MODEL == "gpt-4o-transcribe":
+            # The old model takes a single language
+            transcript = client.audio.transcriptions.create(
+                model=TRANSCRIBE_MODEL,
+                file=f,
+                language="hi",
+            )
+        else:
+            # gpt-transcribe takes a list of languages, which suits Hinglish
+            transcript = client.audio.transcriptions.create(
+                model=TRANSCRIBE_MODEL,
+                file=f,
+                prompt=LISTENING_CONTEXT,
+                extra_body={"languages": ["hi", "en"]},
+            )
     return transcript.text

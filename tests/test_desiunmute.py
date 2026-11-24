@@ -636,3 +636,60 @@ def test_one_take_keeps_even_a_paused_recording(monkeypatch):
     monkeypatch.setattr(audio, "to_mp3", lambda pcm: b"mp3")
     assert audio.make_audio("नमस्ते", tries=1) == b"mp3"
     assert len(takes) == 1
+
+
+def test_listening_uses_gpt_transcribe_with_hindi_and_english(monkeypatch, tmp_path):
+    from unittest.mock import MagicMock
+    fake = MagicMock()
+    fake.audio.transcriptions.create.return_value.text = "haan ji"
+    monkeypatch.setattr(audio, "client", fake)
+    recording = tmp_path / "a.wav"
+    recording.write_bytes(b"RIFF")
+
+    assert audio.transcribe_audio(str(recording)) == "haan ji"
+    sent = fake.audio.transcriptions.create.call_args.kwargs
+    assert sent["model"] == "gpt-transcribe"
+    assert sent["extra_body"] == {"languages": ["hi", "en"]}
+    assert "language" not in sent                 # never send both
+
+
+def test_listening_can_go_back_to_the_old_model(monkeypatch, tmp_path):
+    from unittest.mock import MagicMock
+    fake = MagicMock()
+    monkeypatch.setattr(audio, "client", fake)
+    monkeypatch.setattr(audio, "TRANSCRIBE_MODEL", "gpt-4o-transcribe")
+    recording = tmp_path / "a.wav"
+    recording.write_bytes(b"RIFF")
+
+    audio.transcribe_audio(str(recording))
+    assert fake.audio.transcriptions.create.call_args.kwargs["language"] == "hi"
+
+
+def test_nani_uses_feminine_forms_for_a_woman(monkeypatch):
+    turn = {"you_said": "haan", "reply": "accha", "reply_devanagari": "अच्छा", "reply_english": "okay", "side_note": ""}
+    client = fake_client(turn, turn)
+    monkeypatch.setattr(conversation, "client", client)
+    monkeypatch.setattr(conversation, "transcribe_audio", lambda path: "aaj bahut kaam tha")
+    monkeypatch.setattr(conversation, "make_audio", lambda text, tries=3: b"audio")
+
+    conversation.conversation_practice("Phone call with Nani", "a.wav", [], "A woman")
+    prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "thak gayi hogi" in prompt and "The learner is a woman" in prompt
+
+    conversation.conversation_practice("Phone call with Nani", "a.wav", [])
+    prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "Avoid words that change for them" in prompt
+
+
+def test_you_said_is_tied_to_the_latest_message(monkeypatch):
+    turn = {"you_said": "aaj office mein bahut kaam tha", "reply": "accha", "reply_devanagari": "अच्छा", "reply_english": "okay", "side_note": ""}
+    client = fake_client(turn)
+    monkeypatch.setattr(conversation, "client", client)
+    monkeypatch.setattr(conversation, "transcribe_audio", lambda path: "आज ऑफ़िस में बहुत काम था")
+    monkeypatch.setattr(conversation, "make_audio", lambda text, tries=3: b"audio")
+    earlier = [{"role": "assistant", "content": "khana khaya?"}, {"role": "user", "content": "हाँ जी नानी जी, सब ठीक है"}, {"role": "assistant", "content": "accha beta"}]
+
+    conversation.conversation_practice("Phone call with Nani", "a.wav", earlier, "A woman")
+    prompt = client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "their latest message, the one to answer):\nआज ऑफ़िस में बहुत काम था" in prompt
+    assert "Don't ask again" in prompt

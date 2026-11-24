@@ -261,7 +261,7 @@ def fake_start(scenario):
     return reply, [{"role": "assistant", "content": reply["reply"]}]
 
 
-def fake_practice(scenario, audio_path, history):
+def fake_practice(scenario, audio_path, history, learner=""):
     with open(audio_path, "rb") as f:
         assert f.read() == b"fake recording"
     reply = {
@@ -338,7 +338,7 @@ def test_summary_needs_learner_to_speak_first():
 
 
 def test_how_do_i_say(monkeypatch):
-    monkeypatch.setattr(main, "how_do_i_say", lambda question, scenario: {
+    monkeypatch.setattr(main, "how_do_i_say", lambda question, scenario, learner="": {
         "say_it": "main garmiyon mein aaungi", "devanagari": "x", "note": "Use aaungi if you're female.", "audio": b"audio",
     })
     client = invited_client()
@@ -746,3 +746,23 @@ def test_warm_up_makes_every_opening_once(monkeypatch):
     main.warm_up_openings()
     openings = [o for openings in main.OPENING_LINES.values() for o in openings]
     assert len(made) == len(openings)
+
+
+def test_conversation_knows_if_the_learner_is_a_woman(monkeypatch):
+    seen = []
+    def remember(scenario, audio_path, history, learner=""):
+        seen.append(learner)
+        return fake_practice(scenario, audio_path, history)
+    monkeypatch.setattr(main, "conversation_practice", remember)
+    client = invited_client()
+
+    page = client.get("/conversation/phone-call-with-nani").text
+    assert 'name="learner" value="A woman"' in page
+
+    for learner in ["A woman", "Someone else"]:
+        client.post(
+            "/conversation/phone-call-with-nani/reply",
+            data={"history": "[]", "learner": learner},
+            files={"recording": ("a.webm", b"fake recording", "audio/webm")},
+        )
+    assert seen == ["A woman", ""]          # unknown values fall back safely

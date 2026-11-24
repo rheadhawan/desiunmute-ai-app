@@ -12,6 +12,14 @@
 
 <!-- The chat. The conversation code is in static/desiunmute.js -->
 <section class="card chat-card" id="chat" data-slug="{{ slug }}">
+  <!-- Hindi changes for the learner: "thak gayi" for a woman, "thak gaye" for a man -->
+  <fieldset id="learner-choice">
+    <legend>I am</legend>
+    <label class="pill"><input type="radio" name="learner" value="A woman"> A woman</label>
+    <label class="pill"><input type="radio" name="learner" value="A man"> A man</label>
+    <p class="hint">So they speak to you the right way, like "thak gayi" or "thak gaye".</p>
+  </fieldset>
+
   <div id="chat-log" class="chat-log" aria-live="polite">
     <p class="hint" id="chat-empty">When you're ready, start the conversation. They'll speak first.</p>
   </div>
@@ -32,6 +40,7 @@
   <p class="hint">Stuck mid-conversation? Ask in English. It won't interrupt the chat.</p>
 
   <form hx-post="/conversation/{{ slug }}/say"
+        hx-include="[name='learner']"
         hx-target="#say-it"
         hx-indicator="#say-loading"
         hx-disabled-elt="find button">
@@ -55,5 +64,5 @@
 
 <p class="hint">Your recordings are sent to OpenAI to understand what you said, then deleted. We never keep them.</p>
 
-<script src="/static/desiunmute.js?v=8"></script>
+<script src="/static/desiunmute.js?v=9"></script>
 {% endblock %}

@@ -25,7 +25,10 @@ CONVERSATION_REASONING = "low"
 # on 2026-11-17 and picked Marin from gpt-realtime-2.1-mini (see audio.py).
 VOICE_MODEL = "gpt-realtime-2.1-mini"
 VOICE_NAME = "marin"
-TRANSCRIBE_MODEL = "gpt-4o-transcribe"
+# Listening (speech to text). gpt-4o-transcribe shuts down Feb 26, 2027;
+# OpenAI's replacement for recorded files is gpt-transcribe (switched 2026-11-24).
+# To go back while it's still running, set this to "gpt-4o-transcribe".
+TRANSCRIBE_MODEL = "gpt-transcribe"
 
 # Limits (to protect the OpenAI budget)
 MAX_TEXT_LENGTH = 300           # characters a learner can type
@@ -51,6 +54,17 @@ TALKING_TO = {
     "An elder": "Use 'aap', respectful plural verbs, and 'ji' where natural, like talking to a parent, grandparent, aunt or uncle.",
     "A child": "Use 'tum' with a warm, simple tone, like talking to a younger child in the family.",
 }
+
+# Whether the learner is a woman or a man, for Conversation Practice.
+# Hindi changes for them: Nani says "thak gayi hogi" to a granddaughter and
+# "thak gaye hoge" to a grandson. Without it, Luna guessed "gaye" for
+# everyone (Rhea's test, 2026-11-24).
+LEARNER = {
+    "A woman": "The learner is a woman. Whenever words change for her, use feminine forms (thak gayi hogi, kaisi ho, aa gayi, main kar rahi hoon).",
+    "A man": "The learner is a man. Whenever words change for him, use masculine forms (thak gaye hoge, kaise ho, aa gaye, main kar raha hoon).",
+    "": "We don't know if the learner is a woman or a man. Avoid words that change for them: say \"thakaan ho gayi hogi\" instead of \"thak gaye/gayi hoge\", and \"sab theek?\" instead of \"kaise/kaisi ho?\".",
+}
+
 
 # Whether the person you're talking to is a woman or a man.
 # Hindi changes words for them too: "aap kaisi hain?" to Nani, "aap kaise hain?" to Nana.
