@@ -147,7 +147,7 @@ def test_conversation_remembers_previous_turns(monkeypatch):
     client = fake_client(nani_reply("namaste nani"), nani_reply("haan nani"))
     monkeypatch.setattr(conversation, "client", client)
     monkeypatch.setattr(conversation, "transcribe_audio", lambda path: "नमस्ते नानी")
-    monkeypatch.setattr(conversation, "make_audio", lambda text: b"mp3")
+    monkeypatch.setattr(conversation, "make_audio", lambda text, tries=3: b"mp3")
 
     reply, history = conversation.conversation_practice("Phone call with Nani", "a.wav", [])
     assert len(history) == 2
@@ -622,6 +622,17 @@ def test_conversation_replies_think_less_for_speed(monkeypatch, tmp_path):
     client = fake_client({"you_said": "haan", "reply": "accha", "reply_devanagari": "अच्छा", "reply_english": "okay", "side_note": ""})
     monkeypatch.setattr(conversation, "client", client)
     monkeypatch.setattr(conversation, "transcribe_audio", lambda path: "haan")
-    monkeypatch.setattr(conversation, "make_audio", lambda text: b"audio")
+    tries = []
+    monkeypatch.setattr(conversation, "make_audio", lambda text, tries=3, calls=tries: calls.append(tries) or b"audio")
     conversation.conversation_practice("Phone call with Nani", "a.wav", [])
     assert client.chat.completions.create.call_args.kwargs["reasoning_effort"] == "low"
+    assert tries == [1]          # Nani's voice is recorded once (speed)
+
+
+def test_one_take_keeps_even_a_paused_recording(monkeypatch):
+    takes = []
+    monkeypatch.setattr(audio, "read_aloud", lambda text: takes.append(1) or (b"\x00\x00" * 24000, text))
+    monkeypatch.setattr(audio, "longest_pause", lambda pcm: 0.9)
+    monkeypatch.setattr(audio, "to_mp3", lambda pcm: b"mp3")
+    assert audio.make_audio("नमस्ते", tries=1) == b"mp3"
+    assert len(takes) == 1

@@ -134,7 +134,7 @@ Reply ONLY with JSON in this exact format:
     ]
 
     # 4. Make the character's reply into speech
-    reply["audio"] = make_audio(reply["reply_devanagari"])
+    reply["audio"] = make_audio(reply["reply_devanagari"], tries=1)   # one take: faster (see audio.py)
     done_at = time.perf_counter()
 
     print(

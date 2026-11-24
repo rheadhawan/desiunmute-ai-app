@@ -31,11 +31,16 @@ Do not translate, answer, explain, add or change anything. Only read it.
 """
 
 
-def make_audio(devanagari_text):
+# tries: how many takes it may record. Conversations use 1: each take is
+# ~4 s, a pause between sentences is natural in a call, and 3 takes made
+# Nani's replies take 11.5 s (Rhea's log, 2026-11-24). Lessons and Translate
+# keep 3, because that audio is short, saved and replayed.
+
+def make_audio(devanagari_text, tries=MAX_VOICE_TRIES):
     best_take = None
     best_pause = 99
 
-    for attempt in range(1, MAX_VOICE_TRIES + 1):
+    for attempt in range(1, tries + 1):
         pcm_bytes, spoken_words = read_aloud(devanagari_text)
         pause = longest_pause(pcm_bytes)
         same_words = only_letters(spoken_words) == only_letters(devanagari_text)
@@ -48,7 +53,7 @@ def make_audio(devanagari_text):
             return to_mp3(pcm_bytes)
         if same_words and pause < best_pause:
             best_take, best_pause = pcm_bytes, pause
-        if best_take is None and attempt == MAX_VOICE_TRIES:
+        if best_take is None and attempt == tries:
             best_take = pcm_bytes
 
     return to_mp3(best_take)
